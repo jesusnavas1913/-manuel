@@ -4,12 +4,38 @@ const cors = require('cors');
 
 const app = express();
 
-// ── Middlewares globales ──────────────────────────────────────
+// ── CORS ─────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://manuel-red.vercel.app',   // Vercel producción
+  'https://manuel.vercel.app',
+  /\.vercel\.app$/,                  // cualquier preview de Vercel
+  'http://localhost:3001',
+  'http://localhost:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5500',
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: (origin, callback) => {
+    // Permitir peticiones sin origin (curl, Postman, same-origin)
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error(`CORS bloqueado para: ${origin}`));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Responder preflight OPTIONS inmediatamente
+app.options('*', cors());
+
 app.use(express.json());
+
 
 // ── Rutas ─────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
