@@ -1,6 +1,16 @@
-const API_BASE = window.location.origin.includes('3000') || window.location.origin.includes('5500') || window.location.protocol === 'file:'
-  ? 'http://localhost:3001/api'
-  : '/api';
+// ── API Base URL ──────────────────────────────────────────────────
+// Local dev  → localhost:3001
+// Producción → backend en Railway (actualizar RAILWAY_URL cuando esté desplegado)
+const RAILWAY_BACKEND = 'https://sigep-ieg-production.up.railway.app';
+
+const API_BASE = (() => {
+  const origin = window.location.origin;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1') || window.location.protocol === 'file:') {
+    return 'http://localhost:3001/api';
+  }
+  // En Vercel u otro host → apuntar al backend en Railway
+  return `${RAILWAY_BACKEND}/api`;
+})();
 
 const Storage = {
   getToken: () => localStorage.getItem('sigep_token'),
