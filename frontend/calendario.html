@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I.E. Guaimaral · Calendario Institucional</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body onload="requireSession(); initCalendarioPage()">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          <img src="assets/img/escudo.png" alt="Escudo" style="height: 36px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+          <span>I.E. GUAIMARAL</span>
+        </h1>
+        <p>I.E. Guaimaral · Sistema Académico</p>
+      </div>
+      <nav class="menu">
+        <a href="dashboard.html">
+          <span>📊</span> Panel Principal
+        </a>
+        <a href="docentes.html">
+          <span>👨‍🏫</span> Docentes
+        </a>
+        <a href="planeaciones.html">
+          <span>📁</span> Planeaciones
+        </a>
+        <a href="calendario.html" class="active">
+          <span>📅</span> Calendario
+        </a>
+        <a href="reportes.html">
+          <span>📈</span> Reportes
+        </a>
+        <a href="#" onclick="logout()" class="logout-btn">
+          <span>🚪</span> Cerrar sesión
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-title">Calendario e Excepciones Institucionales</div>
+        <div class="user-badge">
+          <span id="userName">Cargando...</span>
+          <span id="userRole" class="role-tag">--</span>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="grid">
+          <!-- Form Semana Institucional -->
+          <div class="card c4">
+            <h2>Semana Institucional</h2>
+            <form id="semanaForm" onsubmit="saveSemana(event)">
+              <div class="form-group">
+                <label for="anio">Año Lectivo *</label>
+                <input type="number" id="anio" required min="2020" max="2100">
+              </div>
+
+              <div class="form-group">
+                <label for="numeroSemana">Número de Semana *</label>
+                <input type="number" id="numeroSemana" required min="1" max="53">
+              </div>
+
+              <div class="form-group">
+                <label for="motivo">Motivo / Descripción</label>
+                <input type="text" id="motivo" placeholder="Ej: Receso Escolar, Desarrollo Institucional">
+              </div>
+
+              <button type="submit" id="btnSaveSemana" class="btn btn-success" style="width: 100%; margin-top: 10px;">
+                Guardar Semana
+              </button>
+            </form>
+          </div>
+
+          <!-- Semanas List -->
+          <div class="card c8">
+            <h2>Excepciones de Entrega Programadas</h2>
+            <div class="table-responsive">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Año</th>
+                    <th>Semana ISO</th>
+                    <th>Motivo</th>
+                    <th style="text-align: center;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="semanasList">
+                  <tr>
+                    <td colspan="4" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Cargando calendario...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    async function initCalendarioPage() {
+      const now = new Date();
+      document.getElementById('anio').value = now.getFullYear();
+      document.getElementById('numeroSemana').value = weekNumber(now);
+      await loadSemanas();
+    }
+
+    async function loadSemanas() {
+      try {
+        const semanas = await API.Semanas.getAll();
+        renderSemanas(semanas);
+      } catch (err) {
+        showToast('Error al cargar semanas institucionales', 'error');
+      }
+    }
+
+    function renderSemanas(semanas) {
+      const tbody = document.getElementById('semanasList');
+      const user = Storage.getUser();
+
+      if (!semanas || semanas.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding: 20px;">No hay semanas institucionales registradas</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = semanas.map(s => `
+        <tr>
+          <td><strong>${s.anio}</strong></td>
+          <td>Semana ${s.numero_semana}</td>
+          <td>${s.motivo || 'Semana Institucional'}</td>
+          <td style="text-align: center;">
+            ${user && user.rol === 'administrador' ? `
+              <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteSemana(${s.id})">Eliminar</button>
+            ` : '-'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function saveSemana(e) {
+      e.preventDefault();
+      const payload = {
+        anio: parseInt(document.getElementById('anio').value),
+        numero_semana: parseInt(document.getElementById('numeroSemana').value),
+        motivo: document.getElementById('motivo').value.trim() || 'Semana Institucional'
+      };
+
+      try {
+        await API.Semanas.create(payload);
+        showToast('Semana institucional registrada', 'success');
+        document.getElementById('motivo').value = '';
+        await loadSemanas();
+      } catch (err) {
+        showToast(err.message || 'Error al crear semana institucional', 'error');
+      }
+    }
+
+    async function deleteSemana(id) {
+      if (!confirm('¿Desea eliminar esta semana institucional?')) return;
+      try {
+        await API.Semanas.remove(id);
+        showToast('Semana eliminada', 'success');
+        await loadSemanas();
+      } catch (err) {
+        showToast(err.message || 'Error al eliminar semana', 'error');
+      }
+    }
+  </script>
+</body>
+</html>

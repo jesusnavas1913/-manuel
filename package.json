@@ -1,0 +1,11 @@
+{
+  "name": "sigep-ieg-v2",
+  "version": "1.0.0",
+  "description": "SIGEP-IEG - Sistema Institucional de Gestión de Planeaciones",
+  "private": true,
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "install:backend": "cd backend && npm install"
+  }
+}

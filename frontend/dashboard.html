@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I.E. Guaimaral · Panel Principal</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body onload="requireSession(); initDashboard()">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          <img src="assets/img/escudo.png" alt="Escudo" style="height: 36px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+          <span>I.E. GUAIMARAL</span>
+        </h1>
+        <p>I.E. Guaimaral · Sistema Académico</p>
+      </div>
+      <nav class="menu">
+        <a href="dashboard.html" class="active">
+          <span>📊</span> Panel Principal
+        </a>
+        <a href="docentes.html">
+          <span>👨‍🏫</span> Docentes
+        </a>
+        <a href="planeaciones.html">
+          <span>📁</span> Planeaciones
+        </a>
+        <a href="calendario.html">
+          <span>📅</span> Calendario
+        </a>
+        <a href="reportes.html">
+          <span>📈</span> Reportes
+        </a>
+        <a href="#" onclick="logout()" class="logout-btn">
+          <span>🚪</span> Cerrar sesión
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-title" style="display: flex; align-items: center; gap: 10px;">
+          <span>📊 Panel Principal</span>
+          <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="pulse-dot"></span> En Línea
+          </span>
+        </div>
+        <div class="user-badge">
+          <span id="userName">Cargando...</span>
+          <span id="userRole" class="role-tag">--</span>
+        </div>
+      </header>
+
+      <main class="main">
+        <!-- Banner Ejecutivo -->
+        <div class="executive-banner">
+          <div>
+            <h2>Gestión Institucional de Planeaciones Didácticas</h2>
+            <p>Monitoreo centralizado de entregas, seguimiento docente y control académico en tiempo real.</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <!-- KPIs -->
+          <div class="card c3 kpi">
+            <small>👨‍🏫 Docentes Activos</small>
+            <b id="kpiDocentes">0</b>
+          </div>
+          <div class="card c3 kpi ok">
+            <small>🟢 Entregas a Tiempo</small>
+            <b id="kpiATiempo">0</b>
+          </div>
+          <div class="card c3 kpi late">
+            <small>🟡 Entregas con Retraso</small>
+            <b id="kpiRetraso">0</b>
+          </div>
+          <div class="card c3 kpi no">
+            <small>🔴 No Entregó</small>
+            <b id="kpiNoEntrego">0</b>
+          </div>
+
+          <!-- Latest Deliveries -->
+          <div class="card c8">
+            <h2>Últimas Entregas</h2>
+            <div class="table-responsive">
+              <table id="latestTable">
+                <thead>
+                  <tr>
+                    <th>Docente</th>
+                    <th>Área</th>
+                    <th>Grado</th>
+                    <th>Subida</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="latestList">
+                  <tr>
+                    <td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Cargando planeaciones...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Current Week Info -->
+          <div class="card c4">
+            <h2>Semana Actual</h2>
+            <div id="weekInfo" style="font-size: 15px; display: flex; flex-direction: column; gap: 8px;">
+              <p><b>Semana ISO:</b> <span id="currentWeekNum">--</span></p>
+              <p><b>Año Lectivo:</b> <span id="currentYear">--</span></p>
+            </div>
+            <div class="notice" style="margin-top: 20px;">
+              Las semanas institucionales programadas no generan sanción de retraso en el reporte.
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    async function initDashboard() {
+      // Semana actual
+      const now = new Date();
+      document.getElementById('currentWeekNum').textContent = weekNumber(now);
+      document.getElementById('currentYear').textContent = now.getFullYear();
+
+      // Cargar KPIs desde API REST
+      try {
+        const kpi = await API.Reportes.getKPI();
+        document.getElementById('kpiDocentes').textContent = kpi.total_docentes || 0;
+        document.getElementById('kpiATiempo').textContent = kpi.a_tiempo || 0;
+        document.getElementById('kpiRetraso').textContent = kpi.con_retraso || 0;
+        document.getElementById('kpiNoEntrego').textContent = kpi.no_entrego || 0;
+      } catch (err) {
+        showToast('Error al obtener indicadores KPI', 'error');
+      }
+
+      // Cargar últimas planeaciones
+      try {
+        const plans = await API.Planeaciones.getAll();
+        const tbody = document.getElementById('latestList');
+        if (!plans || plans.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">Sin entregas registradas</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = plans.slice(0, 10).map(p => `
+          <tr>
+            <td><strong>${p.docente_nombre || 'Docente'}</strong></td>
+            <td>${p.area || '-'}</td>
+            <td>${p.grado || '-'}</td>
+            <td>${fmtDate(p.fecha_subida)}</td>
+            <td>${badge(p.estado)}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('Error al cargar la lista de entregas', 'error');
+      }
+    }
+  </script>
+</body>
+</html>
