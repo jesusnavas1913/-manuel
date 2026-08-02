@@ -63,13 +63,12 @@ app.use((err, req, res, next) => {
 });
 
 // ── Arrancar (local) o exportar (Vercel serverless) ──────────
-if (process.env.VERCEL) {
-  // Vercel ejecuta esto como función serverless — solo exportar
-  module.exports = app;
-} else {
+if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3001;
   app.listen(PORT, () => {
     console.log(`🚀 SIGEP-IEG API corriendo en puerto ${PORT}`);
   });
-  module.exports = app;
 }
+
+module.exports = app;
+
