@@ -132,6 +132,15 @@ function filterPlaneaciones() {
   renderPlaneaciones(filtered);
 }
 
+function getPdfUrl(plan) {
+  if (!plan || !plan.nombre_archivo) return null;
+  if (plan.nombre_archivo.startsWith('http://') || plan.nombre_archivo.startsWith('https://')) {
+    return plan.nombre_archivo;
+  }
+  // Construir URL pública de Supabase Storage para archivos guardados solo por nombre
+  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${plan.nombre_archivo}`;
+}
+
 function getCleanPdfFileName(plan) {
   if (!plan) return 'Planeacion_Didactica.pdf';
   if (plan.nombre_archivo) {
@@ -156,8 +165,9 @@ function renderPlaneaciones(plans) {
   tbody.innerHTML = plans.map(p => {
     const dur = extractDuracion(p.observaciones);
     const esPropia = user && user.rol === 'docente' && user.docente_id && parseInt(user.docente_id) === parseInt(p.docente_id);
-    const tienePdf = p.nombre_archivo && p.nombre_archivo.startsWith('http');
+    const pdfUrl = getPdfUrl(p);
     const cleanName = getCleanPdfFileName(p);
+
     return `
     <tr>
       <td style="padding: 8px 10px;"><strong>${p.docente_nombre || 'Docente'}</strong></td>
@@ -168,12 +178,19 @@ function renderPlaneaciones(plans) {
       </td>
       <td style="padding: 8px 10px; white-space: nowrap;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
       <td style="padding: 8px 10px; white-space: nowrap; font-size: 11px;">${fmtDate(p.fecha_subida)}</td>
-      <td style="padding: 8px 10px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${cleanName}">
-        ${tienePdf ? `<button type="button" class="btn btn-sm btn-light" onclick="openPdfViewerModal(${p.id})" style="padding:3px 8px; font-size:11px; color:var(--primary-accent); font-weight:bold;">📄 Ver PDF</button>` : `<code>📄 ${cleanName}</code>`}
+      <td style="padding: 8px 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${cleanName}">
+        ${pdfUrl ? `
+          <a href="${pdfUrl}" target="_blank" download="${cleanName}" class="btn btn-sm btn-light" style="padding:4px 8px; font-size:11px; color:#0284c7; font-weight:bold; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+            📥 Descargar
+          </a>
+        ` : `<code>📄 ${cleanName}</code>`}
       </td>
       <td style="padding: 8px 10px; white-space: nowrap;">${badge(p.estado)}</td>
       <td style="text-align: center; white-space: nowrap; padding: 8px 10px;">
-        ${tienePdf ? `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>` : ''}
+        ${pdfUrl ? `
+          <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+          <a href="${pdfUrl}" target="_blank" download="${cleanName}" class="btn btn-success" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#10b981; color:#fff; text-decoration:none; display:inline-block;">📥 Descargar</a>
+        ` : ''}
         <button class="btn btn-light" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
         ${esPropia ? `
           <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0ea5e9;" onclick="openReemplazarModal(${p.id})">📤 Reemplazar</button>
@@ -486,9 +503,9 @@ function openPdfViewerModal(planId) {
   const plan = allPlaneaciones.find(p => p.id === planId);
   if (!plan) return;
 
-  const pdfUrl = plan.nombre_archivo;
-  if (!pdfUrl || !pdfUrl.startsWith('http')) {
-    showToast('El documento no tiene una URL de PDF pública disponible para visualización en línea.', 'error');
+  const pdfUrl = getPdfUrl(plan);
+  if (!pdfUrl) {
+    showToast('El documento no tiene una URL de PDF disponible.', 'error');
     return;
   }
 

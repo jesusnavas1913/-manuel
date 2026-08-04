@@ -125,8 +125,8 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Confirmación y sincronización final en GitHub" && git push', { cwd: require('path').join(__dirname, '..') });
-      console.log('✅ GitHub 100% Sincronizado');
+      execSync('git add . && git commit -m "Fix: Boton verde Descargar explicito para todas las planeaciones y resolucion de URLs" && git push', { cwd: require('path').join(__dirname, '..') });
+      console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
