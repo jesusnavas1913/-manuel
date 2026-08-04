@@ -168,12 +168,38 @@ exports.create = async (req, res) => {
 };
 
 // PUT /api/planeaciones/:id
+// El administrador puede editar cualquier planeación.
+// El docente puede editar SOLO la suya, previa verificación de contraseña.
 exports.update = async (req, res) => {
-  if (req.user.rol !== 'administrador')
-    return res.status(403).json({ error: 'Sin permisos' });
+  const bcrypt = require('bcryptjs');
+  const { supabase } = require('../db');
 
-  const { area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones, estado } = req.body;
+  const planId = parseInt(req.params.id);
+  const { area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones, estado, password_confirmacion } = req.body;
+
   try {
+    // Obtener la planeación para verificar propiedad
+    const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
+    if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
+    const plan = planRows[0];
+
+    if (req.user.rol === 'docente') {
+      // Verificar que la planeación pertenece a este docente
+      if (plan.docente_id !== req.user.docente_id) {
+        return res.status(403).json({ error: 'No tiene permisos para editar esta planeación.' });
+      }
+      // Verificar contraseña obligatoriamente
+      if (!password_confirmacion) {
+        return res.status(400).json({ error: 'Debe confirmar su contraseña para editar la planeación.' });
+      }
+      const { data: userRows } = await supabase.from('usuarios').select('*').eq('id', req.user.id);
+      const userRec = userRows && userRows[0];
+      if (!userRec) return res.status(401).json({ error: 'Usuario no encontrado.' });
+      const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
+      if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se puede editar la planeación.' });
+    }
+    // Administrador no necesita contraseña
+
     const payload = {};
     if (area !== undefined) payload.area = area;
     if (grado !== undefined) payload.grado = grado;
@@ -186,28 +212,111 @@ exports.update = async (req, res) => {
     const { data: rows, error } = await supabase
       .from('planeaciones')
       .update(payload)
-      .eq('id', parseInt(req.params.id))
+      .eq('id', planId)
       .select('*');
-      
+
     if (error) throw error;
     if (!rows || rows.length === 0) return res.status(404).json({ error: 'No encontrada' });
     res.json(rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Error al actualizar' });
+    res.status(500).json({ error: 'Error al actualizar planeación' });
   }
 };
 
 // DELETE /api/planeaciones/:id
+// El administrador puede eliminar cualquier planeación.
+// El docente puede eliminar SOLO la suya, previa verificación de contraseña (en body.password_confirmacion).
 exports.remove = async (req, res) => {
-  if (req.user.rol !== 'administrador')
-    return res.status(403).json({ error: 'Sin permisos' });
+  const bcrypt = require('bcryptjs');
+  const planId = parseInt(req.params.id);
+  const { password_confirmacion } = req.body || {};
 
-  const { data, error } = await supabase.from('planeaciones').delete().eq('id', parseInt(req.params.id)).select();
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Error al eliminar' });
+  try {
+    if (req.user.rol === 'docente') {
+      const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
+      if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
+      if (planRows[0].docente_id !== req.user.docente_id) {
+        return res.status(403).json({ error: 'No puede eliminar planeaciones de otros docentes.' });
+      }
+      if (!password_confirmacion) {
+        return res.status(400).json({ error: 'Debe confirmar su contraseña para eliminar la planeación.' });
+      }
+      const { data: userRows } = await supabase.from('usuarios').select('*').eq('id', req.user.id);
+      const userRec = userRows && userRows[0];
+      if (!userRec) return res.status(401).json({ error: 'Usuario no encontrado.' });
+      const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
+      if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se puede eliminar la planeación.' });
+    }
+
+    const { data, error } = await supabase.from('planeaciones').delete().eq('id', planId).select();
+    if (error) { console.error(error); return res.status(500).json({ error: 'Error al eliminar' }); }
+    if (!data || data.length === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Planeación eliminada correctamente.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar planeación' });
   }
-  if (!data || data.length === 0) return res.status(404).json({ error: 'No encontrada' });
-  res.json({ message: 'Eliminada' });
+};
+
+// POST /api/planeaciones/:id/reemplazar
+// Permite al docente reemplazar su PDF con verificación de contraseña
+exports.reemplazar = async (req, res) => {
+  const bcrypt = require('bcryptjs');
+  const planId = parseInt(req.params.id);
+  const { password_confirmacion } = req.body;
+
+  if (!req.file) return res.status(400).json({ error: 'Debe adjuntar el archivo PDF' });
+  if (!password_confirmacion) return res.status(400).json({ error: 'Debe confirmar su contraseña' });
+  if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Solo se permiten archivos PDF' });
+
+  try {
+    // Verificar que la planeación pertenece al docente
+    const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
+    if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
+    const plan = planRows[0];
+
+    if (req.user.rol === 'docente' && parseInt(plan.docente_id) !== parseInt(req.user.docente_id)) {
+      return res.status(403).json({ error: 'No tiene permisos para reemplazar esta planeación.' });
+    }
+
+    // Verificar contraseña
+    const { data: userRows } = await supabase.from('usuarios').select('*').eq('id', req.user.id);
+    const userRec = userRows && userRows[0];
+    if (!userRec) return res.status(401).json({ error: 'Usuario no encontrado' });
+    const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo reemplazar el PDF.' });
+
+    // Subir nuevo PDF a Supabase Storage
+    const safeName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+    let nuevaUrl = req.file.originalname;
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('planeaciones_pdfs')
+        .upload(safeName, req.file.buffer, { contentType: 'application/pdf', upsert: true });
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage.from('planeaciones_pdfs').getPublicUrl(safeName);
+        nuevaUrl = urlData.publicUrl;
+        console.log('✅ PDF reemplazado en Storage:', safeName);
+      } else {
+        console.error('⚠️ Error Storage al reemplazar:', uploadError.message);
+      }
+    } catch (sErr) {
+      console.error('⚠️ Excepción al subir PDF de reemplazo:', sErr.message);
+    }
+
+    // Actualizar nombre_archivo en la planeación
+    const { data: updated, error: updErr } = await supabase
+      .from('planeaciones')
+      .update({ nombre_archivo: nuevaUrl })
+      .eq('id', planId)
+      .select('*');
+
+    if (updErr) throw updErr;
+    res.json({ message: 'PDF reemplazado correctamente', planeacion: updated[0] });
+  } catch (err) {
+    console.error('Error al reemplazar PDF:', err);
+    res.status(500).json({ error: err.message || 'Error al reemplazar PDF' });
+  }
 };

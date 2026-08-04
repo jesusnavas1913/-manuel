@@ -143,6 +143,7 @@ function renderPlaneaciones(plans) {
 
   tbody.innerHTML = plans.map(p => {
     const dur = extractDuracion(p.observaciones);
+    const esPropia = user && user.rol === 'docente' && user.docente_id && parseInt(user.docente_id) === parseInt(p.docente_id);
     return `
     <tr>
       <td style="padding: 8px 10px;"><strong>${p.docente_nombre || 'Docente'}</strong></td>
@@ -159,6 +160,10 @@ function renderPlaneaciones(plans) {
       <td style="padding: 8px 10px; white-space: nowrap;">${badge(p.estado)}</td>
       <td style="text-align: center; white-space: nowrap; padding: 8px 10px;">
         <button class="btn btn-light" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
+        ${esPropia ? `
+          <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0ea5e9;" onclick="openReemplazarModal(${p.id})">📤 Reemplazar</button>
+          <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="confirmarEliminarDocente(${p.id})">🗑️ Eliminar</button>
+        ` : ''}
         ${user && user.rol === 'administrador' ? `
           <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" onclick="deletePlaneacion(${p.id})">Eliminar</button>
         ` : ''}
@@ -166,6 +171,7 @@ function renderPlaneaciones(plans) {
     </tr>
   `}).join('');
 }
+
 
 function viewPlanDetail(id) {
   const plan = allPlaneaciones.find(p => p.id === id);
@@ -325,5 +331,135 @@ async function deletePlaneacion(id) {
     await loadPlaneaciones();
   } catch (err) {
     showToast(err.message || 'Error al eliminar planeación', 'error');
+  }
+}
+
+// ── Modal: Reemplazar PDF del docente (con confirmación de contraseña) ──
+function openReemplazarModal(planId) {
+  const existing = document.getElementById('reemplazarModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'reemplazarModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; padding:28px; max-width:460px; width:100%; box-shadow:0 20px 50px rgba(0,0,0,0.4); border:1px solid var(--border, #334155);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0; font-size:17px; font-weight:700; color:var(--primary-accent, #38bdf8);">📤 Reemplazar Planeación PDF</h3>
+        <button onclick="document.getElementById('reemplazarModal').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted, #94a3b8);">✕</button>
+      </div>
+      <p style="font-size:13px; color:var(--text-muted, #94a3b8); margin-bottom:18px;">Selecciona el nuevo archivo PDF y confirma tu contraseña para reemplazar la planeación.</p>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Nuevo archivo PDF *</label>
+        <input type="file" id="reemplazarArchivo" accept=".pdf,application/pdf" style="width:100%; padding:8px; border:1px solid var(--border, #334155); border-radius:8px; background:var(--bg, #0f172a); color:inherit; font-size:13px;">
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Contraseña *</label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input type="password" id="reemplazarPass" placeholder="Confirma tu contraseña" style="width:100%; padding:10px 40px 10px 14px; border:1px solid var(--border, #334155); border-radius:8px; background:var(--bg, #0f172a); color:inherit; font-size:13px;">
+          <button type="button" onclick="toggleModalPassVisibility('reemplazarPass', this)" style="position:absolute; right:10px; background:none; border:none; cursor:pointer; font-size:16px; opacity:0.7;">👁️</button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-light" onclick="document.getElementById('reemplazarModal').remove()">Cancelar</button>
+        <button class="btn btn-primary" id="btnConfirmarReemplazar" onclick="ejecutarReemplazar(${planId})" style="background:#0ea5e9;">📤 Confirmar Reemplazo</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function ejecutarReemplazar(planId) {
+  const fileInput = document.getElementById('reemplazarArchivo');
+  const pass = (document.getElementById('reemplazarPass').value || '').trim();
+  const file = fileInput && fileInput.files[0];
+
+  if (!file) { showToast('⚠️ Debes seleccionar un archivo PDF', 'error'); return; }
+  if (!pass) { showToast('⚠️ Debes ingresar tu contraseña', 'error'); return; }
+
+  const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+  if (!isPdf) { showToast('Solo se aceptan archivos PDF', 'error'); return; }
+
+  const btn = document.getElementById('btnConfirmarReemplazar');
+  if (btn) { btn.disabled = true; btn.innerText = 'Subiendo...'; }
+
+  try {
+    // 1. Subir nuevo PDF reutilizando el endpoint de crear planeación
+    //    Pero necesitamos actualizar la planeación existente con el nuevo archivo
+    //    Primero subimos el archivo al storage y obtenemos la URL
+    const formData = new FormData();
+    formData.append('archivo', file);
+    formData.append('password_confirmacion', pass);
+
+    // Llamar al endpoint de actualización con el archivo
+    const token = Storage.getToken();
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')
+      ? `http://${window.location.hostname}:3001/api`
+      : '/api';
+
+    const res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al reemplazar');
+
+    document.getElementById('reemplazarModal').remove();
+    showToast('✅ PDF reemplazado correctamente', 'success');
+    await loadPlaneaciones();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerText = '📤 Confirmar Reemplazo'; }
+    showToast(err.message || 'Error al reemplazar PDF', 'error');
+  }
+}
+
+// ── Modal: Eliminar planeación del docente con contraseña ──
+function confirmarEliminarDocente(planId) {
+  const existing = document.getElementById('eliminarModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'eliminarModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; padding:28px; max-width:420px; width:100%; box-shadow:0 20px 50px rgba(0,0,0,0.4); border:1px solid var(--border, #334155);">
+      <h3 style="margin:0 0 12px; font-size:17px; color:#f87171;">🗑️ Eliminar Planeación</h3>
+      <p style="font-size:13px; color:var(--text-muted, #94a3b8); margin-bottom:18px;">Esta acción es irreversible. Ingresa tu contraseña para confirmar.</p>
+      <div style="margin-bottom:20px;">
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Contraseña *</label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input type="password" id="eliminarPass" placeholder="Confirma tu contraseña" style="width:100%; padding:10px 40px 10px 14px; border:1px solid var(--border, #334155); border-radius:8px; background:var(--bg, #0f172a); color:inherit; font-size:13px;">
+          <button type="button" onclick="toggleModalPassVisibility('eliminarPass', this)" style="position:absolute; right:10px; background:none; border:none; cursor:pointer; font-size:16px; opacity:0.7;">👁️</button>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-light" onclick="document.getElementById('eliminarModal').remove()">Cancelar</button>
+        <button class="btn btn-danger" id="btnConfirmarEliminar" onclick="ejecutarEliminar(${planId})">Confirmar Eliminación</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function ejecutarEliminar(planId) {
+  const pass = (document.getElementById('eliminarPass').value || '').trim();
+  if (!pass) { showToast('⚠️ Debes ingresar tu contraseña', 'error'); return; }
+
+  const btn = document.getElementById('btnConfirmarEliminar');
+  if (btn) { btn.disabled = true; btn.innerText = 'Eliminando...'; }
+
+  try {
+    await API.Planeaciones.remove(planId, pass);
+    document.getElementById('eliminarModal').remove();
+    showToast('✅ Planeación eliminada correctamente', 'success');
+    await loadPlaneaciones();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerText = 'Confirmar Eliminación'; }
+    showToast(err.message || 'Error al eliminar', 'error');
   }
 }

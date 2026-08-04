@@ -114,8 +114,9 @@ const API = {
       method: 'PUT',
       body: JSON.stringify(data)
     }),
-    remove: (id) => apiFetch(`/planeaciones/${id}`, {
-      method: 'DELETE'
+    remove: (id, passwordConfirmacion) => apiFetch(`/planeaciones/${id}`, {
+      method: 'DELETE',
+      body: passwordConfirmacion ? JSON.stringify({ password_confirmacion: passwordConfirmacion }) : undefined
     })
   },
   Semanas: {

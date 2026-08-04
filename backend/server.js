@@ -125,7 +125,7 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "FIX SEGURIDAD CRITICO: separar admin de docente en login, jamas dar admin por contraseña" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Feature: docente puede reemplazar su PDF y eliminar su planeacion con confirmacion de contrasena" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
