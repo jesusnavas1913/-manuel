@@ -140,8 +140,8 @@ if (!process.env.VERCEL) {
 
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Actualizar nombre oficial de Administrador a I.E. Guaimaral" && git push', { cwd: require('path').join(__dirname, '..') });
-      console.log('✅ GitHub push OK');
+      execSync('git add . && git commit -m "Despliegue de producción fresco: Quitar rollback y publicar la version final" && git push', { cwd: require('path').join(__dirname, '..') });
+      console.log('✅ Nuevo despliegue en producción enviado a GitHub');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
