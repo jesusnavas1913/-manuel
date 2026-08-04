@@ -53,7 +53,7 @@ exports.login = async (req, res) => {
       if (!admin) {
         const hash = await bcrypt.hash('admin123', 10);
         const { data: created } = await supabase.from('usuarios').insert([{
-          nombre: 'Pedro Administrador',
+          nombre: 'I.E. Guaimaral',
           correo: 'ieguaimaral@guaimaral.edu.co',
           password_hash: hash,
           rol: 'administrador',
@@ -77,7 +77,7 @@ exports.login = async (req, res) => {
       const jwtSecret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
       const payload = {
         id: admin.id,
-        nombre: admin.nombre || 'Pedro Administrador',
+        nombre: 'I.E. Guaimaral',
         correo: 'ieguaimaral@guaimaral.edu.co',
         rol: 'administrador',
         docente_id: null

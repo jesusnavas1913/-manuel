@@ -104,24 +104,24 @@ if (!process.env.VERCEL) {
 
     if (!admins || admins.length === 0) {
       await supabase.from('usuarios').insert([{
-        nombre: 'Pedro Administrador',
+        nombre: 'I.E. Guaimaral',
         correo: 'ieguaimaral@guaimaral.edu.co',
         password_hash: hash,
         rol: 'administrador',
         activo: true
       }]);
-      console.log('✅ Admin creado: ieguaimaral@guaimaral.edu.co');
+      console.log('✅ Admin creado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     } else {
-      // Forzar correo correcto y renovar hash de contraseña siempre
+      // Forzar correo y nombre correcto
       for (const admin of admins) {
         await supabase.from('usuarios').update({
-          nombre: 'Pedro Administrador',
+          nombre: 'I.E. Guaimaral',
           correo: 'ieguaimaral@guaimaral.edu.co',
           password_hash: hash,
           activo: true
         }).eq('id', admin.id);
       }
-      console.log('✅ Admin sincronizado: ieguaimaral@guaimaral.edu.co');
+      console.log('✅ Admin sincronizado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     }
 
     // ── Asegurar Bucket de Almacenamiento de PDFs ───────────────
@@ -140,7 +140,7 @@ if (!process.env.VERCEL) {
 
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Feature: Boton de autocompletar credenciales Administrador ieguaimaral en el login" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Actualizar nombre oficial de Administrador a I.E. Guaimaral" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {

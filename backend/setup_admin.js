@@ -28,19 +28,19 @@ async function main() {
     console.log(`\n♻️  Actualizando ${admins.length} administrador(es) existente(s)...`);
     for (const admin of admins) {
       const { error: upErr } = await supabase.from('usuarios').update({
-        nombre: 'Pedro Administrador',
+        nombre: 'I.E. Guaimaral',
         correo: 'ieguaimaral@guaimaral.edu.co',
         password_hash: hash,
         rol: 'administrador',
         activo: true
       }).eq('id', admin.id);
       if (upErr) console.error(`  ❌ Error al actualizar admin ${admin.id}:`, upErr.message);
-      else console.log(`  ✅ Admin ${admin.id} actualizado correctamente`);
+      else console.log(`  ✅ Admin ${admin.id} actualizado correctamente a I.E. Guaimaral`);
     }
   } else {
     console.log('\n➕ No existe administrador. Creando...');
     const { data: created, error: insErr } = await supabase.from('usuarios').insert([{
-      nombre: 'Pedro Administrador',
+      nombre: 'I.E. Guaimaral',
       correo: 'ieguaimaral@guaimaral.edu.co',
       password_hash: hash,
       rol: 'administrador',
