@@ -6,14 +6,17 @@ function createRateLimiter(options = {}) {
   const max = options.max || 500; // Permisivo para desarrollo y producción fluida
   const message = options.message || 'Demasiadas peticiones desde esta IP. Por favor intente más tarde.';
 
-  setInterval(() => {
-    const now = Date.now();
-    for (const [ip, record] of memoryStore.entries()) {
-      if (now > record.resetTime) {
-        memoryStore.delete(ip);
+  // En Vercel serverless no usamos setInterval (cada invocación tiene su propio contexto)
+  if (!process.env.VERCEL) {
+    setInterval(() => {
+      const now = Date.now();
+      for (const [ip, record] of memoryStore.entries()) {
+        if (now > record.resetTime) {
+          memoryStore.delete(ip);
+        }
       }
-    }
-  }, windowMs);
+    }, windowMs);
+  }
 
   return (req, res, next) => {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'ip-desconocida';

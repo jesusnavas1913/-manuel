@@ -125,7 +125,7 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Fix: PDF upload robusto, fix formulario planeaciones, validacion docentes" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Auditoria completa: fix rateLimiter serverless, PDF robusto, unicidad docentes, reportes join" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
