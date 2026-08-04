@@ -125,7 +125,7 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Feature: Visor Modal de PDF integrado para visualizar planeaciones directamente en pantalla" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Fix: Preservar nombre original limpio del archivo PDF al descargar" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {

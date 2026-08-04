@@ -132,6 +132,18 @@ function filterPlaneaciones() {
   renderPlaneaciones(filtered);
 }
 
+function getCleanPdfFileName(plan) {
+  if (!plan) return 'Planeacion_Didactica.pdf';
+  if (plan.nombre_archivo) {
+    const raw = plan.nombre_archivo.split('/').pop().split('?')[0];
+    const clean = raw.replace(/^\d+_[_\-]*/, '');
+    if (clean && clean.toLowerCase().endsWith('.pdf')) return clean;
+  }
+  const area = (plan.area || 'Planeacion').replace(/[^a-zA-Z0-9]/g, '_');
+  const docente = (plan.docente_nombre || 'Docente').replace(/[^a-zA-Z0-9]/g, '_');
+  return `Planeacion_${area}_${docente}.pdf`;
+}
+
 function renderPlaneaciones(plans) {
   const tbody = document.getElementById('plansList');
   const user = Storage.getUser();
@@ -145,6 +157,7 @@ function renderPlaneaciones(plans) {
     const dur = extractDuracion(p.observaciones);
     const esPropia = user && user.rol === 'docente' && user.docente_id && parseInt(user.docente_id) === parseInt(p.docente_id);
     const tienePdf = p.nombre_archivo && p.nombre_archivo.startsWith('http');
+    const cleanName = getCleanPdfFileName(p);
     return `
     <tr>
       <td style="padding: 8px 10px;"><strong>${p.docente_nombre || 'Docente'}</strong></td>
@@ -155,8 +168,8 @@ function renderPlaneaciones(plans) {
       </td>
       <td style="padding: 8px 10px; white-space: nowrap;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
       <td style="padding: 8px 10px; white-space: nowrap; font-size: 11px;">${fmtDate(p.fecha_subida)}</td>
-      <td style="padding: 8px 10px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.nombre_archivo || ''}">
-        ${tienePdf ? `<button type="button" class="btn btn-sm btn-light" onclick="openPdfViewerModal(${p.id})" style="padding:3px 8px; font-size:11px; color:var(--primary-accent); font-weight:bold;">📄 Ver PDF</button>` : `<code>📄 ${p.nombre_archivo || 'Documento'}</code>`}
+      <td style="padding: 8px 10px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${cleanName}">
+        ${tienePdf ? `<button type="button" class="btn btn-sm btn-light" onclick="openPdfViewerModal(${p.id})" style="padding:3px 8px; font-size:11px; color:var(--primary-accent); font-weight:bold;">📄 Ver PDF</button>` : `<code>📄 ${cleanName}</code>`}
       </td>
       <td style="padding: 8px 10px; white-space: nowrap;">${badge(p.estado)}</td>
       <td style="text-align: center; white-space: nowrap; padding: 8px 10px;">
@@ -173,6 +186,7 @@ function renderPlaneaciones(plans) {
     </tr>
   `}).join('');
 }
+
 
 
 
@@ -206,7 +220,7 @@ function viewPlanDetail(id) {
         <div><strong>Fecha Subida:</strong><br>${fmtDate(plan.fecha_subida)}</div>
         <div><strong>Estado:</strong><br>${badge(plan.estado)}</div>
         <div><strong>Duración Estimada:</strong><br>${extractDuracion(plan.observaciones) ? `${extractDuracion(plan.observaciones)} clase(s)` : '1 clase'}</div>
-        <div><strong>Nombre del Archivo:</strong><br>${plan.nombre_archivo && plan.nombre_archivo.startsWith('http') ? `<button type="button" class="btn btn-primary btn-sm" onclick="openPdfViewerModal(${plan.id})" style="padding:3px 10px; font-size:12px;">📄 Visor Modal PDF</button> <a href="${plan.nombre_archivo}" target="_blank" style="color:var(--primary-accent); font-weight:bold; margin-left:8px;">📥 Descargar</a>` : `<code>${plan.nombre_archivo || '-'}</code>`}</div>
+        <div><strong>Nombre del Archivo:</strong><br>${plan.nombre_archivo && plan.nombre_archivo.startsWith('http') ? `<button type="button" class="btn btn-primary btn-sm" onclick="openPdfViewerModal(${plan.id})" style="padding:3px 10px; font-size:12px;">📄 Visor Modal PDF</button> <a href="${plan.nombre_archivo}" target="_blank" download="${getCleanPdfFileName(plan)}" style="color:var(--primary-accent); font-weight:bold; margin-left:8px;">📥 Descargar</a>` : `<code>${getCleanPdfFileName(plan)}</code>`}</div>
         <div style="grid-column: span 2; background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--border); margin-top:6px;">
           <strong>Observaciones / Notas Adicionales:</strong><br>
           <p style="margin:6px 0 0; color:var(--text-muted); font-size:13px; white-space:pre-wrap;">${cleanObs(plan.observaciones) || 'Sin observaciones registradas.'}</p>
@@ -498,7 +512,7 @@ function openPdfViewerModal(planId) {
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
-          <a href="${pdfUrl}" target="_blank" download class="btn btn-primary btn-sm" style="padding:6px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#0284c7;">
+          <a href="${pdfUrl}" target="_blank" download="${getCleanPdfFileName(plan)}" class="btn btn-primary btn-sm" style="padding:6px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#0284c7;">
             📥 Descargar PDF
           </a>
           <button onclick="document.getElementById('pdfViewerModal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 4px;">&times;</button>
