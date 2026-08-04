@@ -2,19 +2,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { supabase } = require('../db');
 
-// Helper interno: Sincronizar contraseña en docentes y usuarios simultáneamente (Resiliente a Schema Cache)
+// Helper interno: Sincronizar contraseña en docentes y usuarios simultáneamente
 async function syncPasswordBoth(userId, docenteId, email, name, newPassword) {
   try {
     const hash = await bcrypt.hash(newPassword, 10);
 
-    // 1. Actualizar usuarios (password_hash)
     if (userId) {
       await supabase.from('usuarios').update({ password_hash: hash }).eq('id', userId);
     } else if (email) {
       await supabase.from('usuarios').update({ password_hash: hash }).ilike('correo', email.toLowerCase().trim());
     }
 
-    // 2. Intentar actualizar docentes (clave_inicial) si la columna existe en el esquema
     try {
       if (docenteId) {
         await supabase.from('docentes').update({ clave_inicial: newPassword }).eq('id', parseInt(docenteId));
@@ -36,170 +34,152 @@ exports.login = async (req, res) => {
     return res.status(400).json({ error: 'Correo y contraseña requeridos' });
 
   try {
-    const rawInput = correo.trim();
-    const cleanEmail = rawInput.toLowerCase();
+    const cleanEmail = correo.trim().toLowerCase();
     const firstPart = cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
 
-    // 1. Buscar en usuarios por correo O por nombre
-    let { data: users } = await supabase
-      .from('usuarios')
-      .select('*')
-      .ilike('correo', cleanEmail);
+    // ── RUTA 1: Administrador — solo por correo oficial ──────────────────
+    const isAdminEmail = cleanEmail.includes('ieguaimaral') ||
+                         cleanEmail === 'ieguaimaral@guaimaral.edu.co';
 
-    if (!users || users.length === 0) {
-      const { data: usersByName } = await supabase
+    if (isAdminEmail) {
+      let { data: adminUsers } = await supabase
         .from('usuarios')
         .select('*')
-        .ilike('nombre', `%${firstPart}%`);
-      users = usersByName;
-    }
+        .eq('rol', 'administrador');
 
-    let user = users && users[0];
+      let admin = adminUsers && adminUsers[0];
 
-    // 2. Buscar en docentes por correo O por nombre
-    let docMatch = null;
-    try {
-      const { data: dRows } = await supabase
-        .from('docentes')
-        .select('*')
-        .ilike('correo', cleanEmail);
-
-      if (dRows && dRows.length > 0) {
-        docMatch = dRows[0];
-      } else {
-        const { data: dByName } = await supabase
-          .from('docentes')
-          .select('*')
-          .ilike('nombre', `%${firstPart}%`);
-        if (dByName && dByName.length > 0) docMatch = dByName[0];
-      }
-    } catch (dErr) {
-      console.warn('Búsqueda en docentes omitida:', dErr.message);
-    }
-
-    // 3. Auto-crear usuario si el docente existe pero no tenía fila en 'usuarios'
-    if (!user && docMatch) {
-      const initialPass = docMatch.clave_inicial || password || 'admin123';
-      const hash = await bcrypt.hash(initialPass, 10);
-      const userMail = (docMatch.correo || cleanEmail).toLowerCase().trim();
-
-      const { data: createdUsers } = await supabase
-        .from('usuarios')
-        .insert([{
-          nombre: docMatch.nombre,
-          correo: userMail,
-          password_hash: hash,
-          rol: 'docente',
-          docente_id: docMatch.id,
-          activo: true
-        }])
-        .select('*');
-
-      if (createdUsers && createdUsers.length > 0) {
-        user = createdUsers[0];
-      }
-    }
-
-    // 4. Resolución infalible para la cuenta de Administrador
-    const isAdminInput = cleanEmail.includes('ieguaimaral') || cleanEmail.includes('admin') || cleanEmail.includes('pedro') || cleanEmail.includes('guaimaral') || password === 'admin123';
-
-    if (isAdminInput) {
-      const { data: adminUsers } = await supabase.from('usuarios').select('*').eq('rol', 'administrador');
-      if (adminUsers && adminUsers.length > 0) {
-        user = adminUsers[0];
-        if (user.correo !== 'ieguaimaral@guaimaral.edu.co') {
-          await supabase.from('usuarios').update({ correo: 'ieguaimaral@guaimaral.edu.co' }).eq('id', user.id);
-          user.correo = 'ieguaimaral@guaimaral.edu.co';
-        }
-      } else {
+      // Si no existe, crearlo automáticamente
+      if (!admin) {
         const hash = await bcrypt.hash('admin123', 10);
-        const { data: newAdmins } = await supabase.from('usuarios').insert([{
+        const { data: created } = await supabase.from('usuarios').insert([{
           nombre: 'Pedro Administrador',
           correo: 'ieguaimaral@guaimaral.edu.co',
           password_hash: hash,
           rol: 'administrador',
           activo: true
         }]).select('*');
-        user = (newAdmins && newAdmins[0]) || {
-          id: 1,
-          nombre: 'Pedro Administrador',
-          correo: 'ieguaimaral@guaimaral.edu.co',
+        admin = created && created[0];
+      }
+
+      if (!admin) {
+        return res.status(401).json({ error: 'No se encontró la cuenta de administrador.' });
+      }
+
+      // Verificar contraseña del admin
+      const ok = await bcrypt.compare(password, admin.password_hash);
+      if (!ok) {
+        return res.status(401).json({ error: 'Contraseña incorrecta. Verifique sus datos.' });
+      }
+
+      const jwtSecret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
+      const payload = {
+        id: admin.id,
+        nombre: admin.nombre || 'Pedro Administrador',
+        correo: 'ieguaimaral@guaimaral.edu.co',
+        rol: 'administrador',
+        docente_id: null
+      };
+      const token = jwt.sign(payload, jwtSecret, { expiresIn: '8h' });
+      return res.json({ token, user: payload });
+    }
+
+    // ── RUTA 2: Docente — por correo o nombre ────────────────────────────
+    // Buscar en tabla usuarios (excluir administradores)
+    let { data: users } = await supabase
+      .from('usuarios')
+      .select('*')
+      .ilike('correo', cleanEmail)
+      .neq('rol', 'administrador');
+
+    // Si no se encontró por correo y el input no tiene @, buscar por nombre
+    if ((!users || users.length === 0) && !cleanEmail.includes('@')) {
+      const { data: byName } = await supabase
+        .from('usuarios')
+        .select('*')
+        .ilike('nombre', `%${firstPart}%`)
+        .neq('rol', 'administrador');
+      users = byName;
+    }
+
+    let user = users && users[0];
+
+    // Si no se encontró en usuarios, buscar en docentes y auto-crear
+    if (!user) {
+      let docMatch = null;
+
+      const { data: dByMail } = await supabase
+        .from('docentes')
+        .select('*')
+        .ilike('correo', cleanEmail);
+
+      if (dByMail && dByMail.length > 0) {
+        docMatch = dByMail[0];
+      } else if (!cleanEmail.includes('@')) {
+        const { data: dByName } = await supabase
+          .from('docentes')
+          .select('*')
+          .ilike('nombre', `%${firstPart}%`);
+        if (dByName && dByName.length > 0) docMatch = dByName[0];
+      }
+
+      if (docMatch) {
+        const initialPass = docMatch.clave_inicial || password;
+        const hash = await bcrypt.hash(initialPass, 10);
+        const userMail = (docMatch.correo || cleanEmail).toLowerCase().trim();
+        const { data: created } = await supabase.from('usuarios').insert([{
+          nombre: docMatch.nombre,
+          correo: userMail,
           password_hash: hash,
-          rol: 'administrador',
+          rol: 'docente',
+          docente_id: docMatch.id,
           activo: true
-        };
+        }]).select('*');
+        if (created && created.length > 0) user = created[0];
       }
     }
 
     if (!user) {
-      const { data: allUsers } = await supabase.from('usuarios').select('*');
-      if (allUsers && allUsers.length > 0) {
-        user = allUsers.find(u => u.rol === 'administrador') || allUsers[0];
-      } else if (password === 'admin123') {
-        const hash = await bcrypt.hash('admin123', 10);
-        user = {
-          id: 1,
-          nombre: 'Pedro Administrador',
-          correo: 'ieguaimaral@guaimaral.edu.co',
-          password_hash: hash,
-          rol: 'administrador',
-          activo: true
-        };
-      }
+      return res.status(401).json({ error: 'Credenciales incorrectas: no se encontró la cuenta.' });
     }
 
-    if (!user) {
-      return res.status(401).json({ error: 'Credenciales incorrectas: no se encontró la cuenta' });
-    }
-
-    // 5. Verificar Contraseña Omnicanal Infalible
+    // Verificar contraseña del docente
     let ok = false;
-
-    if (user && user.password_hash) {
+    if (user.password_hash) {
       ok = await bcrypt.compare(password, user.password_hash);
-      if (!ok && password === user.password_hash) ok = true;
     }
 
-    if (!ok && (password === 'admin123' || (user && user.rol === 'administrador'))) {
-      ok = true;
-    }
-
-    if (!ok && user && user.rol === 'administrador' && password === 'admin123') {
-      ok = true;
-    }
-
-    if (!ok && docMatch && docMatch.clave_inicial) {
-      if (password === docMatch.clave_inicial || password === 'admin123') {
+    // Fallback: verificar clave_inicial del docente en tabla docentes
+    if (!ok && user.docente_id) {
+      const { data: docData } = await supabase
+        .from('docentes')
+        .select('clave_inicial')
+        .eq('id', user.docente_id)
+        .single();
+      if (docData && docData.clave_inicial && password === docData.clave_inicial) {
         ok = true;
+        await syncPasswordBoth(user.id, user.docente_id, user.correo, user.nombre, password);
       }
-    }
-
-    if (!ok && password === 'admin123') {
-      ok = true;
     }
 
     if (!ok) {
       return res.status(401).json({ error: 'Contraseña incorrecta. Verifique sus datos e intente de nuevo.' });
     }
 
-    // 6. Sincronización Inmediata y Generación de Token
-    const userId = user ? user.id : null;
-    const docenteId = user ? user.docente_id : (docMatch ? docMatch.id : null);
-    const activeEmail = cleanEmail.includes('@') ? cleanEmail : (user.correo || 'ieguaimaral@guaimaral.edu.co');
-
-    await syncPasswordBoth(userId, docenteId, activeEmail, user?.nombre || docMatch?.nombre, password);
-
-    const payload = {
-      id: userId || 1,
-      nombre: user?.nombre || docMatch?.nombre || 'Pedro Administrador',
-      correo: activeEmail,
-      rol: user?.rol || 'administrador',
-      docente_id: docenteId,
-    };
+    // Sincronizar contraseña y generar token
+    await syncPasswordBoth(user.id, user.docente_id, user.correo, user.nombre, password);
 
     const jwtSecret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
+    const payload = {
+      id: user.id,
+      nombre: user.nombre,
+      correo: user.correo,
+      rol: user.rol || 'docente',
+      docente_id: user.docente_id
+    };
     const token = jwt.sign(payload, jwtSecret, { expiresIn: '8h' });
-    res.json({ token, user: payload });
+    return res.json({ token, user: payload });
+
   } catch (err) {
     console.error('Error en login:', err);
     res.status(500).json({ error: 'Error interno al procesar inicio de sesión' });
@@ -242,7 +222,6 @@ exports.register = async (req, res) => {
     }
 
     await syncPasswordBoth(rows[0].id, docente_id, cleanMail, nombre, password);
-
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error(err);
@@ -269,7 +248,7 @@ exports.changePassword = async (req, res) => {
     if (!ok) {
       try {
         const { data: dData } = await supabase.from('docentes').select('*').ilike('correo', user.correo);
-        if (dData && dData.length > 0 && (dData[0].clave_inicial === password_actual || password_actual === 'admin123')) {
+        if (dData && dData.length > 0 && dData[0].clave_inicial === password_actual) {
           ok = true;
         }
       } catch (e) {}
@@ -278,7 +257,6 @@ exports.changePassword = async (req, res) => {
     if (!ok) return res.status(401).json({ error: 'La contraseña actual ingresada no es correcta' });
 
     await syncPasswordBoth(user.id, user.docente_id, user.correo, user.nombre, password_nuevo);
-
     res.json({ message: 'Contraseña actualizada con éxito en todos los módulos' });
   } catch (err) {
     console.error(err);
