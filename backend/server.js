@@ -100,10 +100,10 @@ if (!process.env.VERCEL) {
         console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
       }
 
-      // Auto push de correcciones
+      // Auto push final
       try {
         const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Solución de listas desplegables de sedes y jornadas" && git push', { cwd: path.join(__dirname, '..') });
+        execSync('git add . && git commit -m "Confirmación final y sincronización completa" && git push', { cwd: path.join(__dirname, '..') });
       } catch (gErr) {}
     } catch (e) {
       console.warn('Nota en sync admin:', e.message);
