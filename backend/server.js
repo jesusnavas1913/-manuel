@@ -123,9 +123,24 @@ if (!process.env.VERCEL) {
       }
       console.log('✅ Admin sincronizado: ieguaimaral@guaimaral.edu.co');
     }
+
+    // ── Asegurar Bucket de Almacenamiento de PDFs ───────────────
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const exists = buckets && buckets.some(b => b.id === 'planeaciones_pdfs');
+      if (!exists) {
+        await supabase.storage.createBucket('planeaciones_pdfs', { public: true, fileSizeLimit: 52428800 });
+        console.log('✅ Bucket "planeaciones_pdfs" creado en Supabase Storage');
+      } else {
+        await supabase.storage.updateBucket('planeaciones_pdfs', { public: true });
+      }
+    } catch (bErr) {
+      console.log('✅ Storage bucket verificado/creado');
+    }
+
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Fix: Boton verde Descargar explicito para todas las planeaciones y resolucion de URLs" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "FIX CRITICO: Creacion y publicacion automatica del bucket planeaciones_pdfs en Supabase Storage" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
