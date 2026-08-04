@@ -70,6 +70,20 @@ exports.create = async (req, res) => {
       clave_inicial: initialKey
     };
 
+    // ── Validación de unicidad: mismo nombre O mismo correo ──────
+    const { data: existing } = await supabase
+      .from('docentes')
+      .select('id, nombre, correo')
+      .or(`nombre.ilike.${nombre},${correo ? `correo.ilike.${correo}` : `nombre.ilike.${nombre}`}`);
+
+    if (existing && existing.length > 0) {
+      const dup = existing[0];
+      const motivo = dup.correo && correo && dup.correo.toLowerCase() === correo.toLowerCase()
+        ? `Ya existe un docente con el correo "${correo}"`
+        : `Ya existe un docente con el nombre "${dup.nombre}"`;
+      return res.status(409).json({ error: `${motivo}. No se permiten duplicados.` });
+    }
+
     let rows = null;
     let error = null;
 

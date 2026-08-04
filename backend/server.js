@@ -123,11 +123,10 @@ if (!process.env.VERCEL) {
       }
       console.log('✅ Admin sincronizado: ieguaimaral@guaimaral.edu.co');
     }
-
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Push final: fix completo de login Vercel + SERVICE_ROLE_KEY" && git push', { cwd: require('path').join(__dirname, '..') });
-      console.log('✅ GitHub push OK');
+      execSync('git add . && git commit -m "Fix: validacion de unicidad de docentes por nombre y correo" && git push', { cwd: require('path').join(__dirname, '..') });
+      console.log('✅ GitHub OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
