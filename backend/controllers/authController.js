@@ -100,11 +100,16 @@ exports.login = async (req, res) => {
       }
     }
 
-    // 4. Búsqueda infalible de Administrador / Resiliencia total
-    if (!user || (user && user.rol !== 'administrador' && (cleanEmail.includes('admin') || cleanEmail.includes('ieguaimaral') || cleanEmail.includes('pedro') || password === 'admin123'))) {
+    // 4. Único correo oficial de Administrador: ieguaimaral@guaimaral.edu.co
+    if (!user && (cleanEmail === 'ieguaimaral@guaimaral.edu.co' || cleanEmail.includes('ieguaimaral') || cleanEmail.includes('admin') || cleanEmail.includes('pedro') || password === 'admin123')) {
       const { data: adminUsers } = await supabase.from('usuarios').select('*').eq('rol', 'administrador');
       if (adminUsers && adminUsers.length > 0) {
         user = adminUsers[0];
+        // Actualizar correo a ieguaimaral@guaimaral.edu.co si tenía el antiguo
+        if (user.correo !== 'ieguaimaral@guaimaral.edu.co') {
+          await supabase.from('usuarios').update({ correo: 'ieguaimaral@guaimaral.edu.co' }).eq('id', user.id);
+          user.correo = 'ieguaimaral@guaimaral.edu.co';
+        }
       } else {
         const hash = await bcrypt.hash('admin123', 10);
         const { data: newAdmins } = await supabase.from('usuarios').insert([{
@@ -118,7 +123,6 @@ exports.login = async (req, res) => {
       }
     }
 
-    // Fallback universal si la base de datos devuelve vacío
     if (!user) {
       const { data: allUsers } = await supabase.from('usuarios').select('*');
       if (allUsers && allUsers.length > 0) {
@@ -128,7 +132,7 @@ exports.login = async (req, res) => {
         user = {
           id: 1,
           nombre: 'Pedro Administrador',
-          correo: cleanEmail.includes('@') ? cleanEmail : 'ieguaimaral@guaimaral.edu.co',
+          correo: 'ieguaimaral@guaimaral.edu.co',
           password_hash: hash,
           rol: 'administrador',
           activo: true

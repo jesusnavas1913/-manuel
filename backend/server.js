@@ -115,10 +115,10 @@ if (!process.env.VERCEL) {
         console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
       }
 
-      // Auto push fix infalible
+      // Auto push correo único admin
       try {
         const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Fix infalible para login de Administrador en Vercel" && git push', { cwd: path.join(__dirname, '..') });
+        execSync('git add . && git commit -m "Unico correo oficial de Administrador ieguaimaral@guaimaral.edu.co" && git push', { cwd: path.join(__dirname, '..') });
       } catch (gErr) {}
     } catch (e) {
       console.warn('Nota en sync admin:', e.message);
