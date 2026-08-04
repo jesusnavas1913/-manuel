@@ -256,7 +256,7 @@ async function savePlaneacion(e) {
   }
 
   const fileInput = document.getElementById('archivo');
-  const file = fileInput.files[0];
+  const file = fileInput ? fileInput.files[0] : null;
 
   if (!file && !document.getElementById('nombreArchivo').value) {
     showToast('Debe adjuntar el archivo PDF de la planeación', 'error');
@@ -276,13 +276,10 @@ async function savePlaneacion(e) {
   }
 
   const fileName = file ? file.name : document.getElementById('nombreArchivo').value;
-
-  const duracion = document.getElementById('duracionClases').value;
-  const userObs = document.getElementById('observaciones').value.trim();
+  const duracion = (document.getElementById('duracionClases') || {}).value || '1';
+  const userObs = (document.getElementById('observaciones').value || '').trim();
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
-
-  const fechaAppStr = document.getElementById('fechaAplicacion').value;
-  const fechaApp = fechaAppStr ? new Date(fechaAppStr) : new Date();
+  const fechaApp = new Date(fechaAppStr);
   const autoSemana = weekNumber(fechaApp);
 
   const payload = new FormData();
@@ -292,7 +289,6 @@ async function savePlaneacion(e) {
   payload.append('fecha_aplicacion', fechaAppStr);
   payload.append('numero_semana', autoSemana);
   payload.append('observaciones', obsFinal);
-  
   if (file) {
     payload.append('archivo', file);
   } else {

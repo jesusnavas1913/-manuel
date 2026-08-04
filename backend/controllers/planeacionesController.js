@@ -100,27 +100,36 @@ exports.create = async (req, res) => {
 
   did = parseInt(did) || 1;
 
-  // Manejo de archivo con Multer & Supabase Storage con fallback resiliente
+  // Manejo de archivo con Multer & Supabase Storage
   if (req.file) {
     if (req.file.mimetype !== 'application/pdf') {
       return res.status(400).json({ error: 'Únicamente se permiten archivos en formato PDF (.pdf)' });
     }
-    const safeName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-    
+
+    const safeName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+
     try {
+      // Intentar subir a Supabase Storage (bucket: planeaciones_pdfs)
       const { error: uploadError } = await supabase.storage
         .from('planeaciones_pdfs')
-        .upload(safeName, req.file.buffer, { contentType: 'application/pdf' });
+        .upload(safeName, req.file.buffer, {
+          contentType: 'application/pdf',
+          upsert: true
+        });
 
       if (!uploadError) {
         const { data: publicUrlData } = supabase.storage
           .from('planeaciones_pdfs')
           .getPublicUrl(safeName);
         nombre_archivo = publicUrlData.publicUrl;
+        console.log('✅ PDF subido a Supabase Storage:', safeName);
       } else {
+        console.error('⚠️ Error al subir PDF a Storage:', uploadError.message);
+        // Guardar solo el nombre del archivo como fallback
         nombre_archivo = req.file.originalname;
       }
     } catch (sErr) {
+      console.error('⚠️ Excepción al subir PDF:', sErr.message);
       nombre_archivo = req.file.originalname;
     }
   } else if (!nombre_archivo) {
