@@ -6,7 +6,7 @@ exports.getReporte = async (req, res) => {
   const { docente_id, sede_id, jornada_id, grado, estado, semana, anio } = req.query;
 
   try {
-    let query = supabase.from('planeaciones').select('*, docentes!inner(*)', { count: 'exact' });
+    let query = supabase.from('planeaciones').select('*, docentes(*)', { count: 'exact' });
 
     // Si es docente, forzar su propio id
     if (req.user.rol === 'docente') {
