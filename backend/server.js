@@ -125,8 +125,8 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Fix: Preservar nombre original limpio del archivo PDF al descargar" && git push', { cwd: require('path').join(__dirname, '..') });
-      console.log('✅ GitHub push OK');
+      execSync('git add . && git commit -m "Confirmación y sincronización final en GitHub" && git push', { cwd: require('path').join(__dirname, '..') });
+      console.log('✅ GitHub 100% Sincronizado');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
