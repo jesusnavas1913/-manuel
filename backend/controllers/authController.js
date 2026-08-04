@@ -37,12 +37,9 @@ exports.login = async (req, res) => {
     const cleanEmail = correo.trim().toLowerCase();
     const firstPart = cleanEmail.split('@')[0].replace(/[._-]/g, ' ');
 
-    // ── RUTA 1: Administrador (ieguaimaral, pedro@guaimaral.edu.co, admin) ──
+    // ── RUTA 1: Administrador — ÚNICAMENTE ieguaimaral@guaimaral.edu.co ──
     const isAdminEmail = cleanEmail.includes('ieguaimaral') ||
-                         cleanEmail.includes('pedro') ||
-                         cleanEmail.includes('admin') ||
-                         cleanEmail === 'ieguaimaral@guaimaral.edu.co' ||
-                         cleanEmail === 'pedro@guaimaral.edu.co';
+                         cleanEmail === 'ieguaimaral@guaimaral.edu.co';
 
     if (isAdminEmail) {
       let { data: adminUsers } = await supabase
