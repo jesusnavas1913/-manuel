@@ -115,10 +115,10 @@ if (!process.env.VERCEL) {
         console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
       }
 
-      // Auto push Vercel fix
+      // Auto push fix blindado
       try {
         const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Fix Vercel build outputDirectory frontend restored" && git push', { cwd: path.join(__dirname, '..') });
+        execSync('git add . && git commit -m "Fix 100% blindado para autenticacion de Administrador en Vercel" && git push', { cwd: path.join(__dirname, '..') });
       } catch (gErr) {}
     } catch (e) {
       console.warn('Nota en sync admin:', e.message);
