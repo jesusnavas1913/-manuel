@@ -140,7 +140,7 @@ if (!process.env.VERCEL) {
 
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Establecer ieguaimaral@guaimaral.edu.co como UNICO correo de Administrador" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Feature: Boton de autocompletar credenciales Administrador ieguaimaral en el login" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
