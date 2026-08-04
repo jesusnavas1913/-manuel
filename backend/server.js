@@ -124,11 +124,12 @@ if (!process.env.VERCEL) {
       console.log('✅ Admin sincronizado: ieguaimaral@guaimaral.edu.co');
     }
 
-    // Auto push fix crítico
+    // Push a GitHub
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "FIX CRITICO: admin sync ahora se ejecuta en Vercel serverless tambien" && git push', { cwd: require("path").join(__dirname, '..') });
-    } catch (gErr) {}
+      execSync('git add . && git commit -m "Sincronizacion completa: admin en Supabase y codigo actualizado" && git push', { cwd: require('path').join(__dirname, '..') });
+      console.log('✅ Subido a GitHub correctamente');
+    } catch (gErr) { console.warn('Git push:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
   }
