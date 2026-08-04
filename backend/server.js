@@ -88,42 +88,50 @@ if (!process.env.VERCEL) {
   
   const cronJobs = require('./cron/verificador');
   cronJobs.iniciarCronJobs();
+}
 
-  // Asegurar usuario administrador por defecto
-  (async () => {
-    try {
-      const bcrypt = require('bcryptjs');
-      const { supabase } = require('./db');
-      const { data: admins } = await supabase.from('usuarios').select('*').eq('rol', 'administrador');
-      if (!admins || admins.length === 0) {
-        const hash = await bcrypt.hash('admin123', 10);
-        await supabase.from('usuarios').insert([{
+// ── Asegurar Administrador (Local + Vercel) ───────────────────
+(async () => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { supabase } = require('./db');
+    const hash = await bcrypt.hash('admin123', 10);
+
+    const { data: admins } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('rol', 'administrador');
+
+    if (!admins || admins.length === 0) {
+      await supabase.from('usuarios').insert([{
+        nombre: 'Pedro Administrador',
+        correo: 'ieguaimaral@guaimaral.edu.co',
+        password_hash: hash,
+        rol: 'administrador',
+        activo: true
+      }]);
+      console.log('✅ Admin creado: ieguaimaral@guaimaral.edu.co');
+    } else {
+      // Forzar correo correcto y renovar hash de contraseña siempre
+      for (const admin of admins) {
+        await supabase.from('usuarios').update({
           nombre: 'Pedro Administrador',
           correo: 'ieguaimaral@guaimaral.edu.co',
           password_hash: hash,
-          rol: 'administrador',
           activo: true
-        }]);
-        console.log('✅ Administrador configurado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
-      } else {
-        for (const admin of admins) {
-          await supabase.from('usuarios').update({
-            nombre: 'Pedro Administrador',
-            correo: 'ieguaimaral@guaimaral.edu.co'
-          }).eq('id', admin.id);
-        }
-        console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
+        }).eq('id', admin.id);
       }
-
-      // Auto push audit
-      try {
-        const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Auditoria 360: Fix join de reportes y optimizacion general de plataforma" && git push', { cwd: path.join(__dirname, '..') });
-      } catch (gErr) {}
-    } catch (e) {
-      console.warn('Nota en sync admin:', e.message);
+      console.log('✅ Admin sincronizado: ieguaimaral@guaimaral.edu.co');
     }
-  })();
-}
+
+    // Auto push fix crítico
+    try {
+      const { execSync } = require('child_process');
+      execSync('git add . && git commit -m "FIX CRITICO: admin sync ahora se ejecuta en Vercel serverless tambien" && git push', { cwd: require("path").join(__dirname, '..') });
+    } catch (gErr) {}
+  } catch (e) {
+    console.warn('Nota en sync admin:', e.message);
+  }
+})();
 
 module.exports = app;

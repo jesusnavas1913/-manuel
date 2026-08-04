@@ -3,7 +3,7 @@
 // Producción → /api  (Vercel enruta al backend serverless)
 const API_BASE = (() => {
   const origin = window.location.origin;
-  if (origin.includes('localhost') || origin.includes('127.0.0.1') || window.location.protocol === 'file:') {
+  if (window.location.protocol === 'file:' || origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.') || origin.includes(':5500') || origin.includes(':8080') || origin.includes(':3000')) {
     return 'http://localhost:3001/api';
   }
   return '/api';
