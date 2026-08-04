@@ -1,9 +1,21 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
 const c = require('../controllers/planeacionesController');
+const { body } = require('express-validator');
+const { validateResult } = require('../middleware/validator');
+const multer = require('multer');
+
+// Usamos memoryStorage porque subiremos el buffer directamente a Supabase
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.get('/', auth, c.getAll);
-router.post('/', auth, c.create);
+
+router.post('/', auth, upload.single('archivo'), [
+  body('area').notEmpty().withMessage('Área es requerida'),
+  body('grado').notEmpty().withMessage('Grado es requerido'),
+  validateResult
+], c.create);
+
 router.put('/:id', auth, c.update);
 router.delete('/:id', auth, c.remove);
 

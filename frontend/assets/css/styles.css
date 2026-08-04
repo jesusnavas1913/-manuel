@@ -299,7 +299,6 @@ a {
   .login-form-side {
     padding: 36px 24px;
   }
-};
 }
 
 .login-card .brand p {
@@ -561,7 +560,7 @@ a {
   display: block;
   font-size: 44px;
   font-weight: 800;
-  color: var(--primary-navy);
+  color: var(--text-main);
   margin-top: 10px;
   line-height: 1;
   letter-spacing: -1px;
@@ -934,5 +933,208 @@ tr:hover td {
   }
   .c3, .c4, .c5, .c6, .c7, .c8 {
     grid-column: span 12;
+  }
+}
+
+/* ── Dark Mode Theme Rules ─────────────────────────────────────────── */
+body.dark-mode {
+  --bg: #0b1329;
+  --surface: #111c38;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #1e293b;
+  --border-hover: #334155;
+  background-image: radial-gradient(#1e293b 0.8px, transparent 0.8px);
+}
+
+body.dark-mode .topbar {
+  background: rgba(17, 28, 56, 0.9);
+  border-bottom-color: #1e293b;
+}
+
+body.dark-mode .topbar-title {
+  color: #38bdf8;
+}
+
+body.dark-mode .user-badge {
+  background: #111c38;
+  color: #f1f5f9;
+  border-color: #1e293b;
+}
+
+body.dark-mode input, 
+body.dark-mode select, 
+body.dark-mode textarea,
+body.dark-mode .select-interactive,
+body.dark-mode .chip-group,
+body.dark-mode .chip-option {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+body.dark-mode input::placeholder,
+body.dark-mode select::placeholder,
+body.dark-mode textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode select option {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+}
+
+body.dark-mode .select-interactive:hover,
+body.dark-mode input:hover,
+body.dark-mode select:hover,
+body.dark-mode textarea:hover {
+  background-color: #1e293b !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+}
+
+body.dark-mode .select-interactive:focus,
+body.dark-mode input:focus,
+body.dark-mode select:focus,
+body.dark-mode textarea:focus {
+  background-color: #0f172a !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25) !important;
+}
+
+body.dark-mode tr:hover td {
+  background-color: #1e293b;
+}
+
+body.dark-mode td {
+  border-bottom-color: #1e293b;
+  color: #e2e8f0;
+}
+
+body.dark-mode .btn-light {
+  background-color: #1e293b;
+  color: #38bdf8;
+  border-color: #334155;
+}
+
+body.dark-mode .btn-light:hover {
+  background-color: #334155;
+  color: #ffffff;
+}
+
+body.dark-mode .card {
+  background-color: #111c38;
+  border-color: #1e293b;
+}
+
+body.dark-mode .card h2,
+body.dark-mode .card h1,
+body.dark-mode .card h3,
+body.dark-mode .card h4,
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3 {
+  color: #f8fafc !important;
+}
+
+body.dark-mode .kpi b {
+  color: #38bdf8 !important;
+}
+
+body.dark-mode .kpi.ok b {
+  color: #34d399 !important;
+}
+
+body.dark-mode .kpi.late b {
+  color: #fbbf24 !important;
+}
+
+body.dark-mode .kpi.no b {
+  color: #f87171 !important;
+}
+
+body.dark-mode .kpi small {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode .notice {
+  background: rgba(234, 179, 8, 0.12) !important;
+  color: #fde047 !important;
+  border: 1px solid rgba(234, 179, 8, 0.3) !important;
+}
+
+body.dark-mode div[style*="background: var(--border)"],
+body.dark-mode div[style*="background:var(--border)"] {
+  background: #1e293b !important;
+}
+
+/* ── Print Media Optimization (Reportes / Impresión a PDF) ──────────── */
+@media print {
+  .sidebar, .topbar, .toolbar, .btn, .pulse-dot, header, aside, #btnThemeToggle, #btnChangePass {
+    display: none !important;
+  }
+  .app {
+    display: block !important;
+  }
+  .main-content, .main {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+  }
+  .table-responsive {
+    border: none !important;
+    overflow: visible !important;
+  }
+  table {
+    width: 100% !important;
+    font-size: 10pt !important;
+    border-collapse: collapse !important;
+  }
+  th, td {
+    border: 1px solid #444 !important;
+    padding: 6px 8px !important;
+    color: #000 !important;
+  }
+  th {
+    background-color: #091e3a !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ── Premium Staggered Animations for Tables ───────────────────────────── */
+tbody tr {
+  animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+tbody tr:nth-child(1) { animation-delay: 0.05s; }
+tbody tr:nth-child(2) { animation-delay: 0.10s; }
+tbody tr:nth-child(3) { animation-delay: 0.15s; }
+tbody tr:nth-child(4) { animation-delay: 0.20s; }
+tbody tr:nth-child(5) { animation-delay: 0.25s; }
+tbody tr:nth-child(6) { animation-delay: 0.30s; }
+tbody tr:nth-child(7) { animation-delay: 0.35s; }
+tbody tr:nth-child(8) { animation-delay: 0.40s; }
+tbody tr:nth-child(9) { animation-delay: 0.45s; }
+tbody tr:nth-child(10) { animation-delay: 0.50s; }
+tbody tr:nth-child(n+11) { animation-delay: 0.55s; }
+
+@keyframes slideInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

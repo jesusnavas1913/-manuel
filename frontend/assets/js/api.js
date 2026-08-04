@@ -29,9 +29,16 @@ const Storage = {
 async function apiFetch(endpoint, options = {}) {
   const token = Storage.getToken();
   const headers = {
-    'Content-Type': 'application/json',
     ...(options.headers || {})
   };
+
+  if (!(options.body instanceof FormData)) {
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+  } else {
+    delete headers['Content-Type'];
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -101,7 +108,7 @@ const API = {
     getAll: () => apiFetch('/planeaciones'),
     create: (data) => apiFetch('/planeaciones', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: data instanceof FormData ? data : JSON.stringify(data)
     }),
     update: (id, data) => apiFetch(`/planeaciones/${id}`, {
       method: 'PUT',

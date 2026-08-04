@@ -1,16 +1,25 @@
-const db = require('../db');
+const { supabase } = require('../db');
 
 // GET /api/semanas
 exports.getAll = async (req, res) => {
-  const { rows } = await db.query(
-    'SELECT * FROM semanas_institucionales ORDER BY anio DESC, numero_semana ASC'
-  );
-  res.json(rows);
+  try {
+    const { data, error } = await supabase
+      .from('semanas_institucionales')
+      .select('*')
+      .order('anio', { ascending: false })
+      .order('numero_semana', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error('Error al obtener semanas:', err);
+    res.status(500).json({ error: 'Error al obtener semanas institucionales' });
+  }
 };
 
 // POST /api/semanas (solo admin)
 exports.create = async (req, res) => {
-  if (req.user.rol !== 'administrador')
+  if (req.user?.rol !== 'administrador')
     return res.status(403).json({ error: 'Sin permisos' });
 
   const { anio, numero_semana, motivo } = req.body;
@@ -18,11 +27,13 @@ exports.create = async (req, res) => {
     return res.status(400).json({ error: 'anio y numero_semana requeridos' });
 
   try {
-    const { rows } = await db.query(
-      'INSERT INTO semanas_institucionales (anio, numero_semana, motivo) VALUES ($1, $2, $3) RETURNING *',
-      [anio, numero_semana, motivo]
-    );
-    res.status(201).json(rows[0]);
+    const { data, error } = await supabase
+      .from('semanas_institucionales')
+      .insert([{ anio: parseInt(anio), numero_semana: parseInt(numero_semana), motivo }])
+      .select();
+
+    if (error) throw error;
+    res.status(201).json(data[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al crear semana institucional' });
@@ -31,12 +42,21 @@ exports.create = async (req, res) => {
 
 // DELETE /api/semanas/:id (solo admin)
 exports.remove = async (req, res) => {
-  if (req.user.rol !== 'administrador')
+  if (req.user?.rol !== 'administrador')
     return res.status(403).json({ error: 'Sin permisos' });
 
-  const { rowCount } = await db.query(
-    'DELETE FROM semanas_institucionales WHERE id = $1', [req.params.id]
-  );
-  if (!rowCount) return res.status(404).json({ error: 'No encontrada' });
-  res.json({ message: 'Eliminada' });
+  try {
+    const { data, error } = await supabase
+      .from('semanas_institucionales')
+      .delete()
+      .eq('id', req.params.id)
+      .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Eliminada' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al eliminar semana institucional' });
+  }
 };

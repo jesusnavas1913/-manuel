@@ -1,4 +1,4 @@
-const db = require('../db');
+const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
 
 // GET /api/reportes
 // Query params: docente_id, sede_id, jornada_id, grado, estado, semana, anio
@@ -6,43 +6,75 @@ exports.getReporte = async (req, res) => {
   const { docente_id, sede_id, jornada_id, grado, estado, semana, anio } = req.query;
 
   try {
-    let conditions = [];
-    let params = [];
-    let idx = 1;
+    let query = supabase.from('planeaciones').select('*, docentes!inner(*)', { count: 'exact' });
 
     // Si es docente, forzar su propio id
     if (req.user.rol === 'docente') {
-      conditions.push(`p.docente_id = $${idx++}`);
-      params.push(req.user.docente_id);
+      let did = req.user.docente_id;
+      if (!did && req.user.correo) {
+        const { data: dRows } = await supabase.from('docentes').select('id').eq('correo', req.user.correo.toLowerCase().trim());
+        if (dRows && dRows.length > 0) did = dRows[0].id;
+      }
+      if (did) {
+        query = query.eq('docente_id', parseInt(did));
+      }
     } else if (docente_id) {
-      conditions.push(`p.docente_id = $${idx++}`);
-      params.push(docente_id);
+      query = query.eq('docente_id', parseInt(docente_id));
     }
 
-    if (sede_id) { conditions.push(`d.sede_id = $${idx++}`); params.push(sede_id); }
-    if (jornada_id) { conditions.push(`d.jornada_id = $${idx++}`); params.push(jornada_id); }
-    if (grado) { conditions.push(`p.grado ILIKE $${idx++}`); params.push(`%${grado}%`); }
-    if (estado) { conditions.push(`p.estado = $${idx++}`); params.push(estado); }
-    if (semana) { conditions.push(`p.numero_semana = $${idx++}`); params.push(semana); }
-    if (anio) { conditions.push(`EXTRACT(YEAR FROM p.fecha_subida) = $${idx++}`); params.push(anio); }
+    if (sede_id) { query = query.eq('docentes.sede_id', parseInt(sede_id)); }
+    if (jornada_id) { query = query.eq('docentes.jornada_id', parseInt(jornada_id)); }
+    if (grado) { query = query.ilike('grado', `%${grado}%`); }
+    if (estado) { query = query.eq('estado', estado); }
+    if (semana) { query = query.eq('numero_semana', parseInt(semana)); }
 
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    query = query.order('fecha_subida', { ascending: false });
 
-    const { rows } = await db.query(`
-      SELECT
-        p.id, p.area, p.grado, p.fecha_aplicacion, p.numero_semana,
-        p.fecha_subida, p.nombre_archivo, p.observaciones, p.estado,
-        d.nombre AS docente_nombre, d.documento AS docente_doc,
-        s.nombre AS sede_nombre, j.nombre AS jornada_nombre
-      FROM planeaciones p
-      JOIN docentes d ON d.id = p.docente_id
-      LEFT JOIN sedes s ON s.id = d.sede_id
-      LEFT JOIN jornadas j ON j.id = d.jornada_id
-      ${where}
-      ORDER BY p.fecha_subida DESC
-    `, params);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 25;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
-    res.json(rows);
+    // Apply pagination ONLY if we are not filtering by anio
+    if (!anio) {
+      query = query.range(from, to);
+    }
+
+    const { data: rows, error, count } = await query;
+    if (error) throw error;
+
+    let filteredRows = rows || [];
+    if (anio) {
+      filteredRows = filteredRows.filter(r => r.fecha_subida && r.fecha_subida.startsWith(anio));
+    }
+
+    let finalRows = filteredRows;
+    let finalCount = count || 0;
+    
+    if (anio) {
+      finalCount = filteredRows.length;
+      finalRows = filteredRows.slice(from, to + 1);
+    }
+
+    const mapped = finalRows.map(p => {
+      const d = p.docentes || {};
+      return {
+        ...p,
+        docente_nombre: d.nombre || 'Docente Institucional',
+        docente_doc: d.documento || '--',
+        sede_nombre: SEDES_MAP[d.sede_id || 1] || 'I.E. Guaimaral',
+        jornada_nombre: JORNADAS_MAP[d.jornada_id || 1] || 'Mañana'
+      };
+    });
+
+    const totalPages = Math.ceil(finalCount / limit) || 1;
+
+    res.json({
+      data: mapped,
+      total: finalCount,
+      page,
+      totalPages
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al generar reporte' });
@@ -56,17 +88,24 @@ exports.getKPI = async (req, res) => {
   }
 
   try {
-    const { rows } = await db.query(`
-      SELECT
-        (SELECT COUNT(*) FROM docentes WHERE estado = 'activo') AS total_docentes,
-        COUNT(*) FILTER (WHERE p.estado = 'a_tiempo') AS a_tiempo,
-        COUNT(*) FILTER (WHERE p.estado = 'retraso') AS con_retraso,
-        COUNT(*) FILTER (WHERE p.estado = 'no_entrego') AS no_entrego,
-        COUNT(*) FILTER (WHERE p.estado = 'semana_institucional') AS semana_institucional,
-        COUNT(*) AS total_planeaciones
-      FROM planeaciones p
-    `);
-    res.json(rows[0]);
+    const { count: total_docentes } = await supabase.from('docentes').select('id', { count: 'exact', head: true }).eq('estado', 'activo');
+    
+    const { data: planes, error } = await supabase.from('planeaciones').select('estado');
+    if (error) throw error;
+    
+    const a_tiempo = planes.filter(p => p.estado === 'a_tiempo').length;
+    const con_retraso = planes.filter(p => p.estado === 'retraso').length;
+    const no_entrego = planes.filter(p => p.estado === 'no_entrego').length;
+    const semana_institucional = planes.filter(p => p.estado === 'semana_institucional').length;
+
+    res.json({
+      total_docentes: total_docentes || 0,
+      a_tiempo,
+      con_retraso,
+      no_entrego,
+      semana_institucional,
+      total_planeaciones: planes.length
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al calcular KPIs' });

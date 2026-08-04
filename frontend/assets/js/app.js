@@ -16,6 +16,44 @@ function requireSession() {
 
     injectChangePasswordButton();
     applyRolePermissions(user);
+    initThemeToggle();
+  }
+}
+
+function initThemeToggle() {
+  const currentTheme = localStorage.getItem('theme') || 'light';
+  if (currentTheme === 'dark') {
+    document.body.classList.add('dark-mode');
+  }
+
+  const run = () => {
+    const badge = document.querySelector('.user-badge');
+    if (badge && !document.getElementById('btnThemeToggle')) {
+      const btn = document.createElement('button');
+      btn.id = 'btnThemeToggle';
+      btn.type = 'button';
+      btn.className = 'btn btn-sm btn-light';
+      btn.style.marginLeft = '8px';
+      btn.style.fontSize = '12px';
+      btn.style.padding = '4px 10px';
+      btn.style.borderRadius = '20px';
+      btn.style.cursor = 'pointer';
+      btn.innerHTML = document.body.classList.contains('dark-mode') ? '☀️ Claro' : '🌙 Oscuro';
+      
+      btn.onclick = () => {
+        const isDark = document.body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        btn.innerHTML = isDark ? '☀️ Claro' : '🌙 Oscuro';
+      };
+
+      badge.appendChild(btn);
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
   }
 }
 
@@ -49,28 +87,54 @@ function openChangePasswordModal() {
 
   const modal = document.createElement('div');
   modal.id = 'passModal';
-  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:9999; display:flex; align-items:center; justify-content:center; animation: fadeIn 0.2s ease;';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center; animation: fadeIn 0.2s ease;';
 
   modal.innerHTML = `
-    <div style="background:#fff; border-radius:12px; padding:24px; max-width:400px; width:90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
-      <h3 style="margin-top:0; margin-bottom:16px; font-size:16px;">🔒 Cambiar Contraseña</h3>
+    <div style="background:var(--card-bg, #ffffff); color:var(--text, #1e293b); border:1px solid var(--border, #e2e8f0); border-radius:16px; padding:28px; max-width:420px; width:92%; box-shadow: 0 20px 30px rgba(0,0,0,0.3);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0; font-size:18px; font-weight:700; color:var(--primary-accent, #2563eb); display:flex; align-items:center; gap:8px;">
+          🔒 Cambiar Mi Contraseña
+        </h3>
+        <button type="button" onclick="document.getElementById('passModal').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted, #64748b);">&times;</button>
+      </div>
+
       <form onsubmit="handlePasswordChangeSubmit(event)">
-        <div class="form-group" style="margin-bottom:12px;">
-          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Contraseña Actual *</label>
-          <input type="password" id="modalPassOld" required style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px;">
-        </div>
         <div class="form-group" style="margin-bottom:16px;">
-          <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px;">Nueva Contraseña *</label>
-          <input type="password" id="modalPassNew" required style="width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px;">
+          <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Contraseña Actual *</label>
+          <div style="position:relative; display:flex; align-items:center;">
+            <input type="password" id="modalPassOld" required placeholder="Ingresa tu clave actual" style="width:100%; padding:10px 40px 10px 14px; border:1px solid var(--border, #cbd5e1); border-radius:8px; background:var(--bg, #f8fafc); color:inherit; font-size:14px;">
+            <button type="button" onclick="toggleModalPassVisibility('modalPassOld', this)" style="position:absolute; right:10px; background:none; border:none; cursor:pointer; font-size:16px; opacity:0.7;">👁️</button>
+          </div>
         </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px;">
+
+        <div class="form-group" style="margin-bottom:24px;">
+          <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Nueva Contraseña *</label>
+          <div style="position:relative; display:flex; align-items:center;">
+            <input type="password" id="modalPassNew" required placeholder="Ingresa tu nueva clave" style="width:100%; padding:10px 40px 10px 14px; border:1px solid var(--border, #cbd5e1); border-radius:8px; background:var(--bg, #f8fafc); color:inherit; font-size:14px;">
+            <button type="button" onclick="toggleModalPassVisibility('modalPassNew', this)" style="position:absolute; right:10px; background:none; border:none; cursor:pointer; font-size:16px; opacity:0.7;">👁️</button>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
           <button type="button" class="btn btn-light" onclick="document.getElementById('passModal').remove()">Cancelar</button>
-          <button type="submit" class="btn btn-primary" id="btnSavePassModal">Actualizar Clave</button>
+          <button type="submit" class="btn btn-primary" id="btnSavePassModal" style="padding:10px 20px;">Guardar Nueva Clave</button>
         </div>
       </form>
     </div>
   `;
   document.body.appendChild(modal);
+}
+
+function toggleModalPassVisibility(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁️';
+  }
 }
 
 async function handlePasswordChangeSubmit(e) {
@@ -82,16 +146,16 @@ async function handlePasswordChangeSubmit(e) {
   if (!oldP || !newP) return;
 
   btn.disabled = true;
-  btn.textContent = 'Guardando...';
+  btn.textContent = '⚡ Guardando clave...';
 
   try {
     const res = await API.Auth.changePassword(oldP, newP);
-    showToast(res.message || 'Contraseña actualizada en todos lados', 'success');
+    showToast(res.message || 'Contraseña actualizada con éxito', 'success');
     document.getElementById('passModal').remove();
   } catch (err) {
     showToast(err.message || 'Error al cambiar contraseña', 'error');
     btn.disabled = false;
-    btn.textContent = 'Actualizar Clave';
+    btn.textContent = 'Guardar Nueva Clave';
   }
 }
 
@@ -181,4 +245,15 @@ function showToast(msg, type = 'info') {
   setTimeout(() => {
     t.remove();
   }, 3500);
+}
+
+function cleanObs(obs) {
+  if (!obs) return '';
+  return obs.replace(/\[Duración:\s*\d+\s*clase\(s\)\]\s*/gi, '').trim();
+}
+
+function extractDuracion(obs) {
+  if (!obs) return null;
+  const match = obs.match(/\[Duración:\s*(\d+)\s*clase\(s\)\]/i);
+  return match ? match[1] : null;
 }

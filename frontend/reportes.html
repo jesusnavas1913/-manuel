@@ -54,21 +54,23 @@
 
       <main class="main">
         <div class="card c12">
-          <h2>Filtros de Reporte</h2>
-          <div class="toolbar">
-            <select id="fDocente" onchange="fetchReport()" class="select-interactive">
+          <h2>Filtros y Búsqueda de Reporte</h2>
+          <div class="toolbar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <input type="text" id="fSearch" placeholder="🔍 Búsqueda rápida (docente, materia, documento...)" oninput="applyFiltersInstant()" class="select-interactive" style="flex: 2; min-width: 240px;">
+
+            <select id="fDocente" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 160px;">
               <option value="">Todos los docentes</option>
             </select>
 
-            <select id="fSede" onchange="fetchReport()" class="select-interactive">
+            <select id="fSede" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 150px;">
               <option value="">Todas las sedes</option>
             </select>
 
-            <select id="fJornada" onchange="fetchReport()" class="select-interactive">
+            <select id="fJornada" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 140px;">
               <option value="">Todas las jornadas</option>
             </select>
 
-            <input type="text" id="fGrado" placeholder="Grado..." oninput="fetchReport()" list="dlGradosReport">
+            <input type="text" id="fGrado" placeholder="Grado..." oninput="applyFiltersInstant()" list="dlGradosReport" style="flex: 1; min-width: 110px;">
             <datalist id="dlGradosReport">
               <option value="Prejardín"></option>
               <option value="Jardín"></option>
@@ -78,7 +80,7 @@
               <option value="10°"></option><option value="11°"></option>
             </datalist>
 
-            <select id="fEstado" onchange="fetchReport()" class="select-interactive">
+            <select id="fEstado" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 150px;">
               <option value="">Todos los estados</option>
               <option value="a_tiempo">Entregado a tiempo</option>
               <option value="retraso">Con retraso</option>
@@ -86,166 +88,73 @@
               <option value="no_entrego">No entregó</option>
             </select>
 
-            <input type="number" id="fSemana" placeholder="Semana..." min="1" max="53" oninput="fetchReport()">
+            <input type="number" id="fSemana" placeholder="Semana..." min="1" max="53" oninput="applyFiltersInstant()" style="flex: 1; min-width: 100px;">
             
-            <button class="btn btn-light" onclick="clearFilters()">Limpiar Filtros</button>
+            <button class="btn btn-light" onclick="clearFilters()" style="white-space: nowrap;">Limpiar Filtros</button>
           </div>
 
-          <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
-            <button class="btn btn-primary" onclick="exportCSV()">
-              📥 Exportar Reporte a CSV
-            </button>
-            <span style="font-size: 13px; color: var(--text-muted);">
-              Total de registros: <strong id="totalRecords">0</strong>
-            </span>
+          <!-- Active Filter Badges Container -->
+          <div id="activeFilterChips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px;"></div>
+
+          <!-- Quick Live Counter Bar & Exports -->
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--bg); padding: 12px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; font-weight: 700;">
+              <span>📊 Total: <span id="statTotal" style="color: var(--primary-accent);">0</span></span>
+              <span>🟢 A tiempo: <span id="statATiempo" style="color: #059669;">0</span></span>
+              <span>🟡 Retrasos: <span id="statRetraso" style="color: #d97706;">0</span></span>
+              <span>🔴 No entregó: <span id="statNoEntrego" style="color: #dc2626;">0</span></span>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn btn-success" onclick="exportExcel()" style="padding: 6px 12px; font-size: 12px;">
+                📊 Excel (.xls)
+              </button>
+              <button class="btn btn-primary" onclick="exportCSV()" style="padding: 6px 12px; font-size: 12px;">
+                📥 CSV
+              </button>
+              <button class="btn btn-light" onclick="exportPDF()" style="padding: 6px 12px; font-size: 12px;">
+                📄 PDF
+              </button>
+            </div>
           </div>
 
-          <div class="table-responsive" style="margin-top: 16px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Docente</th>
-                  <th>Documento</th>
-                  <th>Sede</th>
-                  <th>Jornada</th>
-                  <th>Área</th>
-                  <th>Grado</th>
-                  <th>Semana</th>
-                  <th>Subida</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="reportTableBody">
-                <tr>
-                  <td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">
-                    Generando reporte...
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="table-responsive" style="margin-top: 16px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th onclick="sortReportBy('docente_nombre')" style="cursor:pointer;" title="Click para ordenar por docente">Docente</th>
+                    <th onclick="sortReportBy('docente_doc')" style="cursor:pointer;" title="Click para ordenar por documento">Documento</th>
+                    <th onclick="sortReportBy('sede_nombre')" style="cursor:pointer;" title="Click para ordenar por sede">Sede</th>
+                    <th onclick="sortReportBy('jornada_nombre')" style="cursor:pointer;" title="Click para ordenar por jornada">Jornada</th>
+                    <th onclick="sortReportBy('area')" style="cursor:pointer;" title="Click para ordenar por área">Área</th>
+                    <th onclick="sortReportBy('grado')" style="cursor:pointer;" title="Click para ordenar por grado">Grado</th>
+                    <th onclick="sortReportBy('numero_semana')" style="cursor:pointer;" title="Click para ordenar por semana">Semana</th>
+                    <th onclick="sortReportBy('fecha_subida')" style="cursor:pointer;" title="Click para ordenar por fecha">Subida</th>
+                    <th onclick="sortReportBy('estado')" style="cursor:pointer;" title="Click para ordenar por estado">Estado</th>
+                    <th>Archivo</th>
+                  </tr>
+                </thead>
+                <tbody id="reportTableBody">
+                  <tr>
+                    <td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Generando reporte...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div id="paginationControls" style="display:flex; justify-content:center; align-items:center; gap:16px; margin-top:20px; font-weight:600;">
+              <button class="btn btn-light" id="btnPrevPage" onclick="changePage(-1)">Anterior</button>
+              <span>Página <span id="lblCurrentPage">1</span> de <span id="lblTotalPages">1</span></span>
+              <button class="btn btn-light" id="btnNextPage" onclick="changePage(1)">Siguiente</button>
+            </div>
           </div>
-        </div>
       </main>
     </div>
   </div>
 
   <script src="assets/js/api.js"></script>
   <script src="assets/js/app.js"></script>
-  <script>
-    let reportRows = [];
-
-    async function initReportesPage() {
-      await loadFilterOptions();
-      await fetchReport();
-    }
-
-    async function loadFilterOptions() {
-      try {
-        const user = Storage.getUser();
-        if (user && user.rol !== 'docente') {
-          const docentes = await API.Docentes.getAll();
-          const docSel = document.getElementById('fDocente');
-          docSel.innerHTML = '<option value="">Todos los docentes</option>' +
-            docentes.map(d => `<option value="${d.id}">${d.nombre}</option>`).join('');
-        } else {
-          document.getElementById('fDocente').style.display = 'none';
-        }
-
-        const sedes = await API.Docentes.getSedes();
-        const sedesSel = document.getElementById('fSede');
-        sedesSel.innerHTML = '<option value="">Todas las sedes</option>' +
-          sedes.map(s => `<option value="${s.id}">${s.nombre}</option>`).join('');
-
-        const jornadas = await API.Docentes.getJornadas();
-        const jornadasSel = document.getElementById('fJornada');
-        jornadasSel.innerHTML = '<option value="">Todas las jornadas</option>' +
-          jornadas.map(j => `<option value="${j.id}">${j.nombre}</option>`).join('');
-      } catch (err) {
-        showToast('Error al cargar opciones de filtros', 'error');
-      }
-    }
-
-    async function fetchReport() {
-      const params = {
-        docente_id: document.getElementById('fDocente').value,
-        sede_id: document.getElementById('fSede').value,
-        jornada_id: document.getElementById('fJornada').value,
-        grado: document.getElementById('fGrado').value.trim(),
-        estado: document.getElementById('fEstado').value,
-        semana: document.getElementById('fSemana').value
-      };
-
-      try {
-        reportRows = await API.Reportes.getReporte(params);
-        renderReport();
-      } catch (err) {
-        showToast('Error al generar el reporte', 'error');
-      }
-    }
-
-    function renderReport() {
-      const tbody = document.getElementById('reportTableBody');
-      document.getElementById('totalRecords').textContent = reportRows ? reportRows.length : 0;
-
-      if (!reportRows || reportRows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 20px;">No se encontraron registros con los filtros seleccionados</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = reportRows.map(r => `
-        <tr>
-          <td><strong>${r.docente_nombre || '-'}</strong></td>
-          <td>${r.docente_doc || '-'}</td>
-          <td>${r.sede_nombre || '-'}</td>
-          <td>${r.jornada_nombre || '-'}</td>
-          <td>${r.area || '-'}</td>
-          <td>${r.grado || '-'}</td>
-          <td>Semana ${r.numero_semana || '-'}</td>
-          <td>${fmtDate(r.fecha_subida)}</td>
-          <td>${badge(r.estado)}</td>
-        </tr>
-      `).join('');
-    }
-
-    function clearFilters() {
-      document.getElementById('fDocente').value = '';
-      document.getElementById('fSede').value = '';
-      document.getElementById('fJornada').value = '';
-      document.getElementById('fGrado').value = '';
-      document.getElementById('fEstado').value = '';
-      document.getElementById('fSemana').value = '';
-      fetchReport();
-    }
-
-    function exportCSV() {
-      if (!reportRows || reportRows.length === 0) {
-        showToast('No hay datos para exportar', 'error');
-        return;
-      }
-
-      const headers = 'Docente;Documento;Sede;Jornada;Área;Grado;Semana;Fecha Aplicación;Fecha Subida;Estado;Archivo;Observaciones\n';
-      const body = reportRows.map(r => [
-        `"${r.docente_nombre || ''}"`,
-        `"${r.docente_doc || ''}"`,
-        `"${r.sede_nombre || ''}"`,
-        `"${r.jornada_nombre || ''}"`,
-        `"${r.area || ''}"`,
-        `"${r.grado || ''}"`,
-        r.numero_semana || '',
-        r.fecha_aplicacion ? r.fecha_aplicacion.split('T')[0] : '',
-        r.fecha_subida || '',
-        `"${r.estado || ''}"`,
-        `"${r.nombre_archivo || ''}"`,
-        `"${(r.observaciones || '').replace(/"/g, '""')}"`
-      ].join(';')).join('\n');
-
-      const blob = new Blob(['\ufeff' + headers + body], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `reporte_guaimaral_${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-      showToast('Reporte CSV descargado con éxito', 'success');
-    }
-  </script>
+  <script src="assets/js/reportes.js"></script>
 </body>
 </html>

@@ -56,39 +56,49 @@
         <div class="grid">
           <!-- Form Registrar Planeación (Solo visible para Docentes) -->
           <div class="card c4" id="formCard">
+            <!-- Reloj y Fecha en Vivo -->
+            <div id="liveClockBanner" style="font-size: 12px; font-weight: 600; color: var(--primary-accent); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; background: rgba(56, 189, 248, 0.1); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(56, 189, 248, 0.25);">
+              <span>📅 Fecha y Hora Actual:</span>
+              <span id="lblLiveClock">Cargando...</span>
+            </div>
+
             <h2>Registrar Planeación</h2>
             <form id="planForm" onsubmit="savePlaneacion(event)">
               <div class="form-group" id="docenteGroup">
                 <label for="docenteId">Docente *</label>
-                <select id="docenteId" required>
+                <select id="docenteId">
                   <option value="">Cargando docentes...</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label for="area">Área / Asignatura (Colombia) *</label>
-                <select id="area" required class="select-interactive">
+                <select id="area" class="select-interactive">
                   <option value="">Seleccione el área o asignatura...</option>
                   <option value="Matemáticas">Matemáticas</option>
                   <option value="Humanidades y Lengua Castellana">Humanidades y Lengua Castellana</option>
                   <option value="Idioma Extranjero (Inglés)">Idioma Extranjero (Inglés)</option>
                   <option value="Ciencias Naturales y Ed. Ambiental">Ciencias Naturales y Ed. Ambiental</option>
+                  <option value="Física">Física</option>
+                  <option value="Química">Química</option>
+                  <option value="Biología">Biología</option>
                   <option value="Ciencias Sociales, Historia y Geografía">Ciencias Sociales, Historia y Geografía</option>
+                  <option value="Constitución Política y Cátedra de la Paz">Constitución Política y Cátedra de la Paz</option>
                   <option value="Educación Artística y Cultural">Educación Artística y Cultural</option>
                   <option value="Educación Física, Recreación y Deportes">Educación Física, Recreación y Deportes</option>
-                  <option value="Educación Ética y en Valores">Educación Ética y en Valores</option>
+                  <option value="Educación Ética y en Valores Humanos">Educación Ética y en Valores Humanos</option>
                   <option value="Educación Religiosa">Educación Religiosa</option>
                   <option value="Tecnología e Informática">Tecnología e Informática</option>
                   <option value="Filosofía">Filosofía</option>
                   <option value="Ciencias Económicas y Políticas">Ciencias Económicas y Políticas</option>
-                  <option value="Física">Física</option>
-                  <option value="Química">Química</option>
+                  <option value="Cátedra de Estudios Afrocolombianos">Cátedra de Estudios Afrocolombianos</option>
+                  <option value="Lectura Crítica">Lectura Crítica</option>
                 </select>
               </div>
 
               <div class="form-group">
                 <label for="grado">Grado Académico (Colombia) *</label>
-                <select id="grado" required class="select-interactive">
+                <select id="grado" class="select-interactive">
                   <option value="">Seleccione el grado académico...</option>
                   <option value="Transición">Transición</option>
                   <option value="1°">1° Primero</option>
@@ -107,12 +117,13 @@
 
               <div class="form-group">
                 <label for="fechaAplicacion">Fecha de Aplicación (Inicio de Clases) *</label>
-                <input type="date" id="fechaAplicacion" required>
+                <input type="date" id="fechaAplicacion" onchange="updateAutoSemanaHelper()">
+                <div id="semanaAutoHelper" style="font-size: 11px; margin-top: 5px; color: var(--primary-accent);"></div>
               </div>
 
               <div class="form-group">
                 <label for="duracionClases">Duración de la Planeación (Número de Clases) *</label>
-                <select id="duracionClases" required class="select-interactive">
+                <select id="duracionClases" class="select-interactive">
                   <option value="1">1 Clase</option>
                   <option value="2">2 Clases</option>
                   <option value="3">3 Clases</option>
@@ -125,8 +136,11 @@
               </div>
 
               <div class="form-group">
-                <label for="archivo">Archivo de Planeación (Docx/PDF)</label>
-                <input type="file" id="archivo" onchange="handleFileChange(event)">
+                <label for="archivo">Archivo de Planeación (Únicamente PDF - Máx. 50MB) *</label>
+                <input type="file" id="archivo" accept=".pdf,application/pdf" onchange="handleFileChange(event)">
+                <small style="color: var(--text-muted); font-size: 11px; display: block; margin-top: 4px;">
+                  Solo se aceptan archivos en formato PDF (límite máximo permitido: 50 MB).
+                </small>
                 <input type="hidden" id="nombreArchivo">
               </div>
 
@@ -143,19 +157,22 @@
 
           <!-- Planeaciones List -->
           <div class="card c8" id="listCard">
-            <h2>Listado de Planeaciones Registradas</h2>
-            <div class="table-responsive">
-              <table>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+              <h2 style="margin: 0;">Listado de Planeaciones Registradas</h2>
+              <input type="text" id="searchPlaneaciones" placeholder="🔍 Buscar por docente, área, grado..." oninput="filterPlaneaciones()" style="max-width: 320px; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); outline: none; font-size: 13px;">
+            </div>
+            <div class="table-responsive" style="overflow-x: auto;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
                 <thead>
                   <tr>
-                    <th>Docente</th>
-                    <th>Sede / Jornada</th>
-                    <th>Área / Grado</th>
-                    <th>Aplicación</th>
-                    <th>Subida</th>
-                    <th>Archivo</th>
-                    <th>Estado</th>
-                    <th style="text-align: center;">Acciones</th>
+                    <th style="padding: 8px 10px;">Docente</th>
+                    <th style="padding: 8px 10px;">Sede / Jornada</th>
+                    <th style="padding: 8px 10px;">Área / Grado</th>
+                    <th style="padding: 8px 10px;">Aplicación</th>
+                    <th style="padding: 8px 10px;">Subida</th>
+                    <th style="padding: 8px 10px;">Archivo</th>
+                    <th style="padding: 8px 10px;">Estado</th>
+                    <th style="text-align: center; padding: 8px 10px;">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="plansList">
@@ -175,160 +192,6 @@
 
   <script src="assets/js/api.js"></script>
   <script src="assets/js/app.js"></script>
-  <script>
-    let docentesList = [];
-
-    async function initPlaneacionesPage() {
-      const today = new Date();
-      if (document.getElementById('fechaAplicacion')) {
-        document.getElementById('fechaAplicacion').value = today.toISOString().split('T')[0];
-      }
-
-      const user = Storage.getUser();
-      const formCard = document.getElementById('formCard');
-      const listCard = document.getElementById('listCard');
-
-      if (user && user.rol === 'administrador') {
-        // Pedro el Administrador solo consulta la lista completa de planeaciones
-        if (formCard) formCard.style.display = 'none';
-        if (listCard) {
-          listCard.classList.remove('c8');
-          listCard.classList.add('c12');
-        }
-      } else {
-        // Los docentes ven el formulario para subir sus planeaciones
-        if (formCard) formCard.style.display = 'block';
-        if (listCard) {
-          listCard.classList.remove('c12');
-          listCard.classList.add('c8');
-        }
-        const docenteGroup = document.getElementById('docenteGroup');
-        if (docenteGroup) docenteGroup.style.display = 'none';
-      }
-
-      await loadPlaneaciones();
-    }
-
-    async function loadDocentesSelect() {
-      try {
-        docentesList = await API.Docentes.getAll();
-        const sel = document.getElementById('docenteId');
-        sel.innerHTML = '<option value="">Seleccione docente...</option>' + 
-          docentesList.map(d => `<option value="${d.id}">${d.nombre} (${d.sede_nombre || 'Sin Sede'})</option>`).join('');
-      } catch (err) {
-        showToast('Error al cargar docentes', 'error');
-      }
-    }
-
-    function handleFileChange(e) {
-      const file = e.target.files[0];
-      if (file) {
-        document.getElementById('nombreArchivo').value = file.name;
-      }
-    }
-
-    async function loadPlaneaciones() {
-      try {
-        const plans = await API.Planeaciones.getAll();
-        renderPlaneaciones(plans);
-      } catch (err) {
-        showToast('Error al obtener planeaciones', 'error');
-      }
-    }
-
-    function renderPlaneaciones(plans) {
-      const tbody = document.getElementById('plansList');
-      const user = Storage.getUser();
-
-      if (!plans || plans.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 20px;">No se encontraron planeaciones registradas</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = plans.map(p => `
-        <tr>
-          <td><strong>${p.docente_nombre || 'Docente'}</strong></td>
-          <td>${p.sede_nombre || '-'}<br><small style="color:var(--text-muted)">${p.jornada_nombre || '-'}</small></td>
-          <td>${p.area || '-'}<br><small style="color:var(--text-muted)">${p.grado || '-'}</small></td>
-          <td>${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
-          <td>${fmtDate(p.fecha_subida)}</td>
-          <td><code>${p.nombre_archivo || 'Documento'}</code></td>
-          <td>${badge(p.estado)}</td>
-          <td style="text-align: center;">
-            ${user && user.rol === 'administrador' ? `
-              <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deletePlaneacion(${p.id})">Eliminar</button>
-            ` : '-'}
-          </td>
-        </tr>
-      `).join('');
-    }
-
-    async function savePlaneacion(e) {
-      e.preventDefault();
-      let user = Storage.getUser();
-      let did = user && user.rol === 'docente' ? user.docente_id : parseInt(document.getElementById('docenteId').value);
-
-      // Si el docente no tiene docente_id en la sesión activa, vincularlo automáticamente por su correo
-      if (user && user.rol === 'docente' && !did) {
-        try {
-          const allDocs = await API.Docentes.getAll();
-          const myDoc = allDocs.find(d => d.correo && d.correo.toLowerCase() === (user.correo || '').toLowerCase());
-          if (myDoc) {
-            did = myDoc.id;
-            user.docente_id = myDoc.id;
-            Storage.setUser(user);
-          }
-        } catch (err) {
-          console.error('Error al autorecuperar docente_id:', err);
-        }
-      }
-
-      if (!did) {
-        showToast('No se encontró la identidad del docente. Por favor vuelva a iniciar sesión.', 'error');
-        return;
-      }
-
-      const fileInput = document.getElementById('archivo');
-      const fileName = fileInput.files[0] ? fileInput.files[0].name : (document.getElementById('nombreArchivo').value || 'planeacion.docx');
-
-      const duracion = document.getElementById('duracionClases').value;
-      const userObs = document.getElementById('observaciones').value.trim();
-      const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
-
-      const fechaAppStr = document.getElementById('fechaAplicacion').value;
-      const fechaApp = fechaAppStr ? new Date(fechaAppStr) : new Date();
-      const autoSemana = weekNumber(fechaApp);
-
-      const payload = {
-        docente_id: did,
-        area: document.getElementById('area').value.trim(),
-        grado: document.getElementById('grado').value.trim(),
-        fecha_aplicacion: fechaAppStr,
-        numero_semana: autoSemana,
-        nombre_archivo: fileName,
-        observaciones: obsFinal
-      };
-
-      try {
-        await API.Planeaciones.create(payload);
-        showToast('Planeación registrada correctamente', 'success');
-        document.getElementById('planForm').reset();
-        initPlaneacionesPage();
-      } catch (err) {
-        showToast(err.message || 'Error al registrar planeación', 'error');
-      }
-    }
-
-    async function deletePlaneacion(id) {
-      if (!confirm('¿Está seguro de eliminar esta planeación?')) return;
-      try {
-        await API.Planeaciones.remove(id);
-        showToast('Planeación eliminada', 'success');
-        await loadPlaneaciones();
-      } catch (err) {
-        showToast(err.message || 'Error al eliminar planeación', 'error');
-      }
-    }
-  </script>
+  <script src="assets/js/planeaciones.js"></script>
 </body>
 </html>
