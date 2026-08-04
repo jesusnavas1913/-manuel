@@ -1,10 +1,21 @@
-// Redirect if already logged in
-try {
-  const _cu = Storage.getUser();
-  if (Storage.getToken() && _cu) {
-    window.location.href = _cu.rol === 'docente' ? 'planeaciones.html' : 'dashboard.html';
-  }
-} catch(e){}
+// Verificar sesión previa de forma segura sin bucles en blanco
+(async () => {
+  try {
+    const token = Storage.getToken();
+    const _cu = Storage.getUser();
+    if (token && _cu) {
+      try {
+        const me = await API.Auth.me();
+        if (me && me.rol) {
+          window.location.href = me.rol === 'docente' ? 'planeaciones.html' : 'dashboard.html';
+          return;
+        }
+      } catch (err) {
+        Storage.clearSession();
+      }
+    }
+  } catch(e){}
+})();
 
 // ── Canvas particles ──────────────────────────────────────────
 const canvas = document.getElementById('bgCanvas');

@@ -115,10 +115,10 @@ if (!process.env.VERCEL) {
         console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
       }
 
-      // Auto push fix blindado
+      // Auto push fix pantalla en blanco
       try {
         const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Fix 100% blindado para autenticacion de Administrador en Vercel" && git push', { cwd: path.join(__dirname, '..') });
+        execSync('git add . && git commit -m "Fix blank screen loop and async token validation on login" && git push', { cwd: path.join(__dirname, '..') });
       } catch (gErr) {}
     } catch (e) {
       console.warn('Nota en sync admin:', e.message);
