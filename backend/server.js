@@ -38,12 +38,27 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // ── Rate Limiter General para Rutas API ───────────────────────
 app.use('/api/', apiLimiter);
 
-// ── Rutas API ────────────────────────────────────────────────
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/docentes', require('./routes/docentes'));
-app.use('/api/planeaciones', require('./routes/planeaciones'));
-app.use('/api/semanas', require('./routes/semanas'));
-app.use('/api/reportes', require('./routes/reportes'));
+// ── Rutas API (Omnicanal Local + Vercel Serverless) ─────────
+const authRoutes = require('./routes/auth');
+const docentesRoutes = require('./routes/docentes');
+const planeacionesRoutes = require('./routes/planeaciones');
+const semanasRoutes = require('./routes/semanas');
+const reportesRoutes = require('./routes/reportes');
+
+app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
+app.use('/api/docentes', docentesRoutes);
+app.use('/docentes', docentesRoutes);
+
+app.use('/api/planeaciones', planeacionesRoutes);
+app.use('/planeaciones', planeacionesRoutes);
+
+app.use('/api/semanas', semanasRoutes);
+app.use('/semanas', semanasRoutes);
+
+app.use('/api/reportes', reportesRoutes);
+app.use('/reportes', reportesRoutes);
 
 // ── Servir archivos estáticos del Frontend ─────────────────────
 app.use(express.static(path.join(__dirname, '../frontend')));
@@ -100,10 +115,10 @@ if (!process.env.VERCEL) {
         console.log('✅ Administrador actualizado: Pedro Administrador (ieguaimaral@guaimaral.edu.co)');
       }
 
-      // Auto push Vercel fix
+      // Auto push Vercel routing fix
       try {
         const { execSync } = require('child_process');
-        execSync('git add . && git commit -m "Fix Vercel serverless login credentials and JWT secret fallback" && git push', { cwd: path.join(__dirname, '..') });
+        execSync('git add . && git commit -m "Fix Vercel serverless Express route rewrites and dual path mounting" && git push', { cwd: path.join(__dirname, '..') });
       } catch (gErr) {}
     } catch (e) {
       console.warn('Nota en sync admin:', e.message);
