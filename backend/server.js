@@ -125,7 +125,7 @@ if (!process.env.VERCEL) {
     }
     try {
       const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Feature: docente puede reemplazar su PDF y eliminar su planeacion con confirmacion de contrasena" && git push', { cwd: require('path').join(__dirname, '..') });
+      execSync('git add . && git commit -m "Feature: Visor Modal de PDF integrado para visualizar planeaciones directamente en pantalla" && git push', { cwd: require('path').join(__dirname, '..') });
       console.log('✅ GitHub push OK');
     } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
