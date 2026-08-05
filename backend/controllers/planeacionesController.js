@@ -64,37 +64,65 @@ exports.getAll = async (req, res) => {
   }
 };
 
-// POST /api/planeaciones - Creación ultra resiliente con Auto-Healing de Docente
-exports.create = async (req, res) => {
-  const { docente_id, area, grado, fecha_aplicacion, numero_semana, observaciones } = req.body;
-  let nombre_archivo = req.body.nombre_archivo;
+// Helper interno para subir PDF a Supabase Storage con garantía de URL pública
+async function uploadPdfToStorage(buffer, originalname) {
+  const safeName = `${Date.now()}_${originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
 
+  // 1. Asegurar bucket planeaciones_pdfs en Supabase Storage
+  try {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const exists = buckets && buckets.some(b => b.id === 'planeaciones_pdfs');
+    if (!exists) {
+      await supabase.storage.createBucket('planeaciones_pdfs', { public: true, fileSizeLimit: 52428800 });
+    }
+  } catch (e) {
+    console.warn('Nota verificando bucket:', e.message);
+  }
+
+  // 2. Subir buffer del PDF
+  const { error: uploadError } = await supabase.storage
+    .from('planeaciones_pdfs')
+    .upload(safeName, buffer, {
+      contentType: 'application/pdf',
+      upsert: true
+    });
+
+  if (uploadError) {
+    console.error('❌ Error al subir PDF a Storage:', uploadError.message);
+    throw new Error('No se pudo guardar el PDF en el servidor de almacenamiento: ' + uploadError.message);
+  }
+
+  // 3. Obtener URL pública
+  const { data: publicUrlData } = supabase.storage
+    .from('planeaciones_pdfs')
+    .getPublicUrl(safeName);
+
+  if (!publicUrlData || !publicUrlData.publicUrl) {
+    throw new Error('No se pudo obtener la dirección pública del PDF subido.');
+  }
+
+  console.log('✅ PDF subido exitosamente a Storage:', publicUrlData.publicUrl);
+  return publicUrlData.publicUrl;
+}
+
+// POST /api/planeaciones
+exports.create = async (req, res) => {
+  let { docente_id, area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones } = req.body;
   let did = req.user.rol === 'docente' ? req.user.docente_id : docente_id;
 
-  // Auto-recuperación de ID del docente por correo o nombre si no viene en el token
-  if (!did && req.user.correo) {
-    const { data: dRows } = await supabase.from('docentes').select('id').ilike('correo', req.user.correo.toLowerCase().trim());
-    if (dRows && dRows.length > 0) did = dRows[0].id;
-  }
-
-  if (!did && req.user.nombre) {
-    const { data: dName } = await supabase.from('docentes').select('id').ilike('nombre', `%${req.user.nombre}%`);
-    if (dName && dName.length > 0) did = dName[0].id;
-  }
-
-  // Si el docente no existe en la tabla 'docentes', crearlo automáticamente al vuelo
-  if (!did) {
+  if (req.user.rol === 'docente' && (!did || isNaN(parseInt(did)))) {
     try {
-      const { data: newDoc } = await supabase.from('docentes').insert([{
-        nombre: req.user.nombre || 'Docente Institucional',
-        correo: req.user.correo || 'docente@guaimaral.edu.co',
-        clave_inicial: 'admin123'
-      }]).select('id');
-      if (newDoc && newDoc.length > 0) did = newDoc[0].id;
+      const { data: docRows } = await supabase
+        .from('docentes')
+        .select('id')
+        .ilike('correo', req.user.correo)
+        .limit(1);
+
+      if (docRows && docRows.length > 0) {
+        did = docRows[0].id;
+      }
     } catch (e) {
-      // Fallback: traer el primer docente existente
-      const { data: anyDoc } = await supabase.from('docentes').select('id').limit(1);
-      if (anyDoc && anyDoc.length > 0) did = anyDoc[0].id;
+      console.warn('Error al vincular docente por correo:', e.message);
     }
   }
 
@@ -106,34 +134,13 @@ exports.create = async (req, res) => {
       return res.status(400).json({ error: 'Únicamente se permiten archivos en formato PDF (.pdf)' });
     }
 
-    const safeName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
-
     try {
-      // Intentar subir a Supabase Storage (bucket: planeaciones_pdfs)
-      const { error: uploadError } = await supabase.storage
-        .from('planeaciones_pdfs')
-        .upload(safeName, req.file.buffer, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
-
-      if (!uploadError) {
-        const { data: publicUrlData } = supabase.storage
-          .from('planeaciones_pdfs')
-          .getPublicUrl(safeName);
-        nombre_archivo = publicUrlData.publicUrl;
-        console.log('✅ PDF subido a Supabase Storage:', safeName);
-      } else {
-        console.error('⚠️ Error al subir PDF a Storage:', uploadError.message);
-        // Guardar solo el nombre del archivo como fallback
-        nombre_archivo = req.file.originalname;
-      }
-    } catch (sErr) {
-      console.error('⚠️ Excepción al subir PDF:', sErr.message);
-      nombre_archivo = req.file.originalname;
+      nombre_archivo = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
+    } catch (upErr) {
+      return res.status(500).json({ error: upErr.message });
     }
   } else if (!nombre_archivo) {
-    nombre_archivo = 'Planeacion_Didactica.pdf';
+    return res.status(400).json({ error: 'Debe adjuntar el archivo PDF de la planeación' });
   }
 
   try {
@@ -144,6 +151,14 @@ exports.create = async (req, res) => {
 
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
     const estado = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion);
+
+    // Auto-limpiar registros previos de 'no_entrego' para este docente en la misma semana
+    await supabase
+      .from('planeaciones')
+      .delete()
+      .eq('docente_id', did)
+      .eq('numero_semana', semana)
+      .eq('estado', 'no_entrego');
 
     const { data: rows, error } = await supabase
       .from('planeaciones')
@@ -287,24 +302,8 @@ exports.reemplazar = async (req, res) => {
     const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
     if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo reemplazar el PDF.' });
 
-    // Subir nuevo PDF a Supabase Storage
-    const safeName = `${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
-    let nuevaUrl = req.file.originalname;
-
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from('planeaciones_pdfs')
-        .upload(safeName, req.file.buffer, { contentType: 'application/pdf', upsert: true });
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage.from('planeaciones_pdfs').getPublicUrl(safeName);
-        nuevaUrl = urlData.publicUrl;
-        console.log('✅ PDF reemplazado en Storage:', safeName);
-      } else {
-        console.error('⚠️ Error Storage al reemplazar:', uploadError.message);
-      }
-    } catch (sErr) {
-      console.error('⚠️ Excepción al subir PDF de reemplazo:', sErr.message);
-    }
+    // Subir nuevo PDF a Supabase Storage mediante helper robusto
+    const nuevaUrl = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
 
     // Actualizar nombre_archivo en la planeación
     const { data: updated, error: updErr } = await supabase
@@ -320,3 +319,44 @@ exports.reemplazar = async (req, res) => {
     res.status(500).json({ error: err.message || 'Error al reemplazar PDF' });
   }
 };
+
+// GET /api/planeaciones/:id/descargar
+// Descarga directa proxy del PDF con headers de disposición de archivo adjunto
+exports.download = async (req, res) => {
+  try {
+    const planId = parseInt(req.params.id);
+    const { data: planRows } = await supabase.from('planeaciones').select('*, docentes(*)').eq('id', planId);
+    if (!planRows || planRows.length === 0) {
+      return res.status(404).json({ error: 'Planeación no encontrada' });
+    }
+    const plan = planRows[0];
+
+    if (!plan.nombre_archivo) {
+      return res.status(404).json({ error: 'La planeación no tiene un archivo PDF adjunto' });
+    }
+
+    let pdfUrl = plan.nombre_archivo;
+    if (!pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
+      pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${plan.nombre_archivo}`;
+    }
+
+    const response = await fetch(pdfUrl);
+    if (!response.ok) {
+      return res.status(404).json({ error: 'El archivo PDF no está disponible en el almacenamiento' });
+    }
+
+    const raw = plan.nombre_archivo.split('/').pop().split('?')[0];
+    const clean = raw.replace(/^\d+_[_\-]*/, '') || 'Planeacion_Didactica.pdf';
+    const finalName = clean.endsWith('.pdf') ? clean : `${clean}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(finalName)}"`);
+
+    const arrayBuffer = await response.arrayBuffer();
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (err) {
+    console.error('Error al procesar descarga de PDF:', err);
+    return res.status(500).json({ error: 'Error al procesar la descarga del PDF: ' + err.message });
+  }
+};
+

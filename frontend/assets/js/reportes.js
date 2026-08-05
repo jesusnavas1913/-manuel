@@ -207,11 +207,65 @@ function renderReport() {
       <td>Semana ${r.numero_semana || '-'}</td>
       <td>${fmtDate(r.fecha_subida)}</td>
       <td>${badge(r.estado)}</td>
-      <td style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-        ${r.nombre_archivo && r.nombre_archivo.startsWith('http') ? `<a href="${r.nombre_archivo}" target="_blank" style="color:var(--primary-accent); font-weight:bold; text-decoration:none;">📥 Ver PDF</a>` : `<code>${r.nombre_archivo || '-'}</code>`}
+      <td style="white-space: nowrap;">
+        ${r.nombre_archivo ? `
+          <button type="button" class="btn btn-primary btn-sm" style="padding:3px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="previewPdfModal(${r.id})">📄 Ver</button>
+          <a href="${API_BASE}/planeaciones/${r.id}/descargar" target="_blank" class="btn btn-success btn-sm" style="padding:3px 8px; font-size:11px; background:#10b981; color:#fff; text-decoration:none; display:inline-block;">📥 Descargar</a>
+        ` : `<code>-</code>`}
       </td>
     </tr>
   `).join('');
+}
+
+function getPdfUrlReportes(r) {
+  if (!r || !r.nombre_archivo) return null;
+  if (r.nombre_archivo.startsWith('http://') || r.nombre_archivo.startsWith('https://')) {
+    return r.nombre_archivo;
+  }
+  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${r.nombre_archivo}`;
+}
+
+function previewPdfModal(id) {
+  const r = allReportData.find(item => item.id === id);
+  if (!r) return;
+  const pdfUrl = getPdfUrlReportes(r);
+  if (!pdfUrl) {
+    showToast('El documento no tiene un archivo PDF disponible.', 'error');
+    return;
+  }
+
+  const existing = document.getElementById('reportPdfModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'reportPdfModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1150px; width:98%; height:92vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.6); border:1px solid var(--border, #334155); overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:12px 20px; border-bottom:1px solid var(--border, #334155); flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;">📄</span>
+          <div>
+            <h3 style="margin:0; font-size:16px; font-weight:700; color:var(--primary-accent, #38bdf8);">
+              ${r.area || 'Planeación Didáctica'} — ${r.docente_nombre || 'Docente'}
+            </h3>
+            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">Grado: ${r.grado || '-'} · Semana ${r.numero_semana || '-'}</small>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <a href="${API_BASE}/planeaciones/${r.id}/descargar" target="_blank" class="btn btn-success btn-sm" style="padding:6px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#10b981; color:#fff; border:none; border-radius:6px; font-weight:600; text-decoration:none;">
+            📥 Descargar PDF
+          </a>
+          <button type="button" onclick="document.getElementById('reportPdfModal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 6px;" title="Cerrar">&times;</button>
+        </div>
+      </div>
+      <div style="flex:1; width:100%; height:100%; background:#525659;">
+        <iframe src="${pdfUrl}#toolbar=1&navpanes=0" style="width:100%; height:100%; border:none;" title="Visor PDF Reportes"></iframe>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
 
 function clearFilters() {

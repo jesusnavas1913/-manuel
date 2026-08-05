@@ -79,15 +79,73 @@ async function loadDocentesSelect() {
   }
 }
 
+function handleDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dz = document.getElementById('dropZone');
+  if (dz) dz.style.background = 'rgba(56,189,248,0.15)';
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dz = document.getElementById('dropZone');
+  if (dz) dz.style.background = 'rgba(56,189,248,0.04)';
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const dz = document.getElementById('dropZone');
+  if (dz) dz.style.background = 'rgba(56,189,248,0.04)';
+
+  const files = e.dataTransfer ? e.dataTransfer.files : null;
+  if (!files || files.length === 0) return;
+
+  const input = document.getElementById('archivo');
+  if (input) {
+    input.files = files;
+    handleFileChange({ target: input });
+  }
+}
+
+function updateFileUI(file) {
+  const badge = document.getElementById('selectedFileBadge');
+  const content = document.getElementById('dropZoneContent');
+  const nameLabel = document.getElementById('fileNameLabel');
+  const sizeLabel = document.getElementById('fileSizeLabel');
+
+  if (file && badge && content && nameLabel && sizeLabel) {
+    nameLabel.textContent = file.name;
+    sizeLabel.textContent = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+    badge.style.display = 'flex';
+    content.style.display = 'none';
+  } else if (badge && content) {
+    badge.style.display = 'none';
+    content.style.display = 'block';
+  }
+}
+
+function clearSelectedFile(e) {
+  if (e) e.stopPropagation();
+  const input = document.getElementById('archivo');
+  if (input) input.value = '';
+  const hidden = document.getElementById('nombreArchivo');
+  if (hidden) hidden.value = '';
+  updateFileUI(null);
+}
+
 function handleFileChange(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) {
+    updateFileUI(null);
+    return;
+  }
 
   const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
   if (!isPdf) {
     showToast('⚠️ Formato no permitido. Únicamente se aceptan archivos PDF (.pdf)', 'error');
-    e.target.value = '';
-    document.getElementById('nombreArchivo').value = '';
+    clearSelectedFile();
     return;
   }
 
@@ -96,13 +154,13 @@ function handleFileChange(e) {
   if (file.size > maxBytes) {
     const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
     showToast(`⚠️ El archivo pesa ${sizeMB} MB. El límite máximo de peso es de ${MAX_MB} MB.`, 'error');
-    e.target.value = '';
-    document.getElementById('nombreArchivo').value = '';
+    clearSelectedFile();
     return;
   }
 
   document.getElementById('nombreArchivo').value = file.name;
-  showToast(`✅ Archivo PDF válido (${(file.size / (1024 * 1024)).toFixed(1)} MB)`, 'success');
+  updateFileUI(file);
+  showToast(`✅ Archivo PDF preparado (${(file.size / (1024 * 1024)).toFixed(1)} MB)`, 'success');
 }
 
 let allPlaneaciones = [];
@@ -153,6 +211,25 @@ function getCleanPdfFileName(plan) {
   return `Planeacion_${area}_${docente}.pdf`;
 }
 
+function downloadPdfFile(planId, fallbackUrl, filename) {
+  const downloadUrl = planId ? `${API_BASE}/planeaciones/${planId}/descargar` : fallbackUrl;
+  if (!downloadUrl) {
+    showToast('⚠️ No hay un archivo PDF válido disponible.', 'error');
+    return;
+  }
+  showToast('⏳ Descargando planeación PDF...', 'info');
+
+  const windowRef = window.open(downloadUrl, '_blank');
+  if (!windowRef) {
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename || 'Planeacion_Didactica.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+}
+
 function renderPlaneaciones(plans) {
   const tbody = document.getElementById('plansList');
   const user = Storage.getUser();
@@ -180,16 +257,16 @@ function renderPlaneaciones(plans) {
       <td style="padding: 8px 10px; white-space: nowrap; font-size: 11px;">${fmtDate(p.fecha_subida)}</td>
       <td style="padding: 8px 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${cleanName}">
         ${pdfUrl ? `
-          <a href="${pdfUrl}" target="_blank" download="${cleanName}" class="btn btn-sm btn-light" style="padding:4px 8px; font-size:11px; color:#0284c7; font-weight:bold; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+          <button onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')" class="btn btn-sm btn-light" style="padding:4px 8px; font-size:11px; color:#0284c7; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--border);">
             📥 Descargar
-          </a>
+          </button>
         ` : `<code>📄 ${cleanName}</code>`}
       </td>
       <td style="padding: 8px 10px; white-space: nowrap;">${badge(p.estado)}</td>
       <td style="text-align: center; white-space: nowrap; padding: 8px 10px;">
         ${pdfUrl ? `
           <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
-          <a href="${pdfUrl}" target="_blank" download="${cleanName}" class="btn btn-success" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#10b981; color:#fff; text-decoration:none; display:inline-block;">📥 Descargar</a>
+          <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#10b981; color:#fff; cursor:pointer;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
         ` : ''}
         <button class="btn btn-light" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
         ${esPropia ? `
@@ -204,15 +281,15 @@ function renderPlaneaciones(plans) {
   `}).join('');
 }
 
-
-
-
 function viewPlanDetail(id) {
   const plan = allPlaneaciones.find(p => p.id === id);
   if (!plan) return;
 
   const existing = document.getElementById('planDetailModal');
   if (existing) existing.remove();
+
+  const pdfUrl = getPdfUrl(plan);
+  const cleanName = getCleanPdfFileName(plan);
 
   const modal = document.createElement('div');
   modal.id = 'planDetailModal';
@@ -237,7 +314,7 @@ function viewPlanDetail(id) {
         <div><strong>Fecha Subida:</strong><br>${fmtDate(plan.fecha_subida)}</div>
         <div><strong>Estado:</strong><br>${badge(plan.estado)}</div>
         <div><strong>Duración Estimada:</strong><br>${extractDuracion(plan.observaciones) ? `${extractDuracion(plan.observaciones)} clase(s)` : '1 clase'}</div>
-        <div><strong>Nombre del Archivo:</strong><br>${plan.nombre_archivo && plan.nombre_archivo.startsWith('http') ? `<button type="button" class="btn btn-primary btn-sm" onclick="openPdfViewerModal(${plan.id})" style="padding:3px 10px; font-size:12px;">📄 Visor Modal PDF</button> <a href="${plan.nombre_archivo}" target="_blank" download="${getCleanPdfFileName(plan)}" style="color:var(--primary-accent); font-weight:bold; margin-left:8px;">📥 Descargar</a>` : `<code>${getCleanPdfFileName(plan)}</code>`}</div>
+        <div><strong>Nombre del Archivo:</strong><br>${pdfUrl ? `<button type="button" class="btn btn-primary btn-sm" onclick="openPdfViewerModal(${plan.id})" style="padding:3px 10px; font-size:12px;">📄 Visor Modal PDF</button> <button type="button" class="btn btn-success btn-sm" onclick="downloadPdfFile(${plan.id}, '${pdfUrl}', '${cleanName}')" style="padding:3px 10px; font-size:12px; margin-left:8px;">📥 Descargar</button>` : `<code>${cleanName}</code>`}</div>
         <div style="grid-column: span 2; background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--border); margin-top:6px;">
           <strong>Observaciones / Notas Adicionales:</strong><br>
           <p style="margin:6px 0 0; color:var(--text-muted); font-size:13px; white-space:pre-wrap;">${cleanObs(plan.observaciones) || 'Sin observaciones registradas.'}</p>
@@ -343,7 +420,7 @@ async function savePlaneacion(e) {
     showToast('✅ Planeación registrada correctamente', 'success');
     
     document.getElementById('planForm').reset();
-    document.getElementById('nombreArchivo').value = '';
+    clearSelectedFile();
     const today = new Date();
     document.getElementById('fechaAplicacion').value = today.toISOString().split('T')[0];
     updateAutoSemanaHelper();
@@ -498,7 +575,7 @@ async function ejecutarEliminar(planId) {
   }
 }
 
-// ── Modal Visor PDF Interactivo Integrado ──────────────────
+// ── Modal Visor PDF Interactivo Integrado Pro ──────────────────
 function openPdfViewerModal(planId) {
   const plan = allPlaneaciones.find(p => p.id === planId);
   if (!plan) return;
@@ -509,32 +586,49 @@ function openPdfViewerModal(planId) {
     return;
   }
 
+  const cleanName = getCleanPdfFileName(plan);
+
   const existing = document.getElementById('pdfViewerModal');
   if (existing) existing.remove();
 
   const modal = document.createElement('div');
   modal.id = 'pdfViewerModal';
-  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
 
   modal.innerHTML = `
-    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1100px; width:96%; height:90vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.5); border:1px solid var(--border, #334155); overflow:hidden;">
-      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:14px 20px; border-bottom:1px solid var(--border, #334155);">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <span style="font-size:20px;">📄</span>
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1150px; width:98%; height:92vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.6); border:1px solid var(--border, #334155); overflow:hidden;">
+      
+      <!-- Topbar Header -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:12px 20px; border-bottom:1px solid var(--border, #334155); flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:24px;">📄</span>
           <div>
-            <h3 style="margin:0; font-size:16px; font-weight:700; color:var(--primary-accent, #38bdf8);">
-              ${plan.area || 'Planeación Didáctica'} — ${plan.docente_nombre || 'Docente'}
+            <h3 style="margin:0; font-size:16px; font-weight:700; color:var(--primary-accent, #38bdf8); display:flex; align-items:center; gap:8px;">
+              ${plan.area || 'Planeación Didáctica'}
+              <span style="font-size:11px; padding:2px 8px; background:rgba(56,189,248,0.15); border-radius:12px; color:#38bdf8; font-weight:600;">Semana ${plan.numero_semana || '-'}</span>
             </h3>
-            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">Grado: ${plan.grado || '-'} · Fecha: ${plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</small>
+            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">
+              Docente: <strong>${plan.docente_nombre || 'Docente'}</strong> · Grado: ${plan.grado || '-'} · Aplicación: ${plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}
+            </small>
           </div>
         </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <a href="${pdfUrl}" target="_blank" download="${getCleanPdfFileName(plan)}" class="btn btn-primary btn-sm" style="padding:6px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#0284c7;">
+
+        <!-- Acciones Pro -->
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button type="button" onclick="downloadPdfFile(${plan.id}, '${pdfUrl}', '${cleanName}')" class="btn btn-success btn-sm" style="padding:6px 14px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#10b981; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">
             📥 Descargar PDF
+          </button>
+          <a href="${pdfUrl}" target="_blank" class="btn btn-light btn-sm" style="padding:6px 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; color:var(--text-main, #f1f5f9); background:rgba(255,255,255,0.1); border:1px solid var(--border, #334155); border-radius:6px; font-weight:600;">
+            🔗 Abrir Pestaña
           </a>
-          <button onclick="document.getElementById('pdfViewerModal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 4px;">&times;</button>
+          <button type="button" onclick="toggleModalFullscreen('pdfViewerModal')" class="btn btn-light btn-sm" style="padding:6px 10px; font-size:12px; background:rgba(255,255,255,0.1); border:1px solid var(--border, #334155); border-radius:6px; color:var(--text-main, #f1f5f9); cursor:pointer;" title="Pantalla Completa">
+            ⤢ Fullscreen
+          </button>
+          <button type="button" onclick="document.getElementById('pdfViewerModal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 6px; margin-left:4px;" title="Cerrar (Esc)">&times;</button>
         </div>
       </div>
+
+      <!-- Iframe Container -->
       <div style="flex:1; width:100%; height:100%; background:#525659; position:relative;">
         <iframe src="${pdfUrl}#toolbar=1&navpanes=0" style="width:100%; height:100%; border:none;" title="Visor de Planeación PDF"></iframe>
       </div>
@@ -542,5 +636,24 @@ function openPdfViewerModal(planId) {
   `;
 
   document.body.appendChild(modal);
+
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      const m = document.getElementById('pdfViewerModal');
+      if (m) m.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+function toggleModalFullscreen(modalId) {
+  const m = document.getElementById(modalId);
+  if (!m) return;
+  if (!document.fullscreenElement) {
+    m.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
 }
 

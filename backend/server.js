@@ -15,7 +15,7 @@ app.use(cors({
   origin: (origin, callback) => {
     // Permitir cualquier origen en entorno de desarrollo local o sin origin (cURL, Postman, file://)
     if (!origin || !process.env.VERCEL) return callback(null, true);
-    
+
     const ALLOWED_ORIGINS = [
       'https://manuel-red.vercel.app',
       'https://manuel.vercel.app',
@@ -85,7 +85,7 @@ if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`🚀 SIGEP-IEG API corriendo en puerto ${PORT}`);
   });
-  
+
   const cronJobs = require('./cron/verificador');
   cronJobs.iniciarCronJobs();
 }
@@ -93,6 +93,13 @@ if (!process.env.VERCEL) {
 // ── Asegurar Administrador (Local + Vercel) ───────────────────
 (async () => {
   try {
+
+
+
+
+
+
+
     const bcrypt = require('bcryptjs');
     const { supabase } = require('./db');
     const hash = await bcrypt.hash('admin123', 10);
@@ -137,12 +144,6 @@ if (!process.env.VERCEL) {
     } catch (bErr) {
       console.warn('Nota en storage bucket:', bErr.message);
     }
-
-    try {
-      const { execSync } = require('child_process');
-      execSync('git add . && git commit -m "Despliegue de producción fresco: Quitar rollback y publicar la version final" && git push', { cwd: require('path').join(__dirname, '..') });
-      console.log('✅ Nuevo despliegue en producción enviado a GitHub');
-    } catch (gErr) { console.warn('git:', gErr.message); }
   } catch (e) {
     console.warn('Nota en sync admin:', e.message);
   }

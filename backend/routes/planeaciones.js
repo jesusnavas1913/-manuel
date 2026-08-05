@@ -19,6 +19,8 @@ router.post('/', auth, upload.single('archivo'), [
 // Ruta especial para que el docente reemplace su propio PDF (con contraseña)
 router.post('/:id/reemplazar', auth, upload.single('archivo'), c.reemplazar);
 
+router.get('/:id/descargar', c.download);
+
 router.put('/:id', auth, c.update);
 router.delete('/:id', auth, c.remove);
 
