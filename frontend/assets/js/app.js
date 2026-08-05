@@ -169,11 +169,20 @@ function applyRolePermissions(user) {
 
   const runHide = () => {
     if (user.rol === 'docente') {
-      // Ocultar enlaces de módulos administrativos para docentes (Panel Principal, Docentes, Calendario, Reportes)
+      // Ocultar únicamente los enlaces de módulos administrativos para docentes
       document.querySelectorAll('a[href="dashboard.html"], a[href="docentes.html"], a[href="calendario.html"], a[href="reportes.html"]').forEach(el => {
         el.style.display = 'none';
-        if (el.parentElement) el.parentElement.style.display = 'none';
       });
+
+      // Actualizar texto del enlace a Mis Planeaciones para docentes
+      const planLink = document.querySelector('a[href="planeaciones.html"]');
+      if (planLink) {
+        planLink.innerHTML = '<span>📁</span> Mis Planeaciones';
+      }
+      const titleLabel = document.getElementById('topbarTitleLabel');
+      if (titleLabel) {
+        titleLabel.textContent = '📁 Mis Planeaciones Didácticas';
+      }
 
       // Proteger navegación directa por URL
       if (path.endsWith('dashboard.html') || path.endsWith('docentes.html') || path.endsWith('calendario.html') || path.endsWith('reportes.html')) {
