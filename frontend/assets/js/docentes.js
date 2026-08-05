@@ -159,12 +159,14 @@ async function loadDocentes() {
     docentesData = await API.Docentes.getAll();
     renderDocentes(docentesData);
   } catch (err) {
-    showToast('Error al obtener docentes', 'error');
+    console.warn('Aviso: no se pudo sincronizar la lista secundaria de docentes', err);
   }
 }
 
 function filterDocentes() {
-  const q = (document.getElementById('searchDocentes').value || '').toLowerCase().trim();
+  const input = document.getElementById('searchDocentes');
+  if (!input) return;
+  const q = (input.value || '').toLowerCase().trim();
   if (!q) {
     renderDocentes(docentesData);
     return;
@@ -182,6 +184,8 @@ function filterDocentes() {
 
 function renderDocentes(list = docentesData) {
   const tbody = document.getElementById('docentesList');
+  if (!tbody) return;
+
   if (!list || list.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">No se encontraron docentes registrados</td></tr>`;
     return;
@@ -206,12 +210,113 @@ function renderDocentes(list = docentesData) {
         <td style="max-width: 200px;">${areasTags}</td>
         <td style="max-width: 150px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap;">
-          <button class="btn btn-light" style="padding: 4px 10px; font-size: 12px;" onclick="editDocente(${d.id})">Editar</button>
-          <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocente(${d.id})">Eliminar</button>
+          <button class="btn btn-light" style="padding: 4px 10px; font-size: 12px; margin-right:4px;" onclick="editDocente(${d.id})">✏️ Editar</button>
+          <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocente(${d.id})">🗑️ Eliminar</button>
         </td>
       </tr>
     `;
   }).join('');
+}
+
+async function openDocenteExpedienteModalFromDocentesPage(docenteId, docenteNombre) {
+  try {
+    showToast('⏳ Cargando planeaciones del docente...', 'info');
+    const allPlans = await API.Planeaciones.getAll();
+    const plans = allPlans.filter(p => String(p.docente_id) === String(docenteId));
+
+    if (!plans || plans.length === 0) {
+      showToast(`ℹ️ El docente "${docenteNombre}" no registra planeaciones aún`, 'info');
+      return;
+    }
+
+    const docSede = plans[0].sede_nombre || 'I.E. Guaimaral';
+    const docJornada = plans[0].jornada_nombre || 'Mañana';
+    const docDoc = plans[0].docente_doc || '--';
+
+    const existing = document.getElementById('docenteExpedienteModalDocentesPage');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'docenteExpedienteModalDocentesPage';
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+    modal.innerHTML = `
+      <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1050px; width:96%; max-height:90vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.5); border:1px solid var(--border, #334155); overflow:hidden;">
+        
+        <!-- Header Topbar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:16px 22px; border-bottom:1px solid var(--border, #334155); flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div style="width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #38bdf8); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold;">
+              ${(docenteNombre || 'D').charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h3 style="margin:0; font-size:18px; font-weight:700; color:var(--primary-accent, #38bdf8);">
+                Expediente de Planeaciones · ${docenteNombre}
+              </h3>
+              <small style="color:var(--text-muted, #94a3b8); font-size:12px;">
+                Documento: ${docDoc} · Sede: ${docSede} · Jornada: ${docJornada}
+              </small>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:12px; padding:4px 12px; background:rgba(56,189,248,0.15); color:#38bdf8; border-radius:20px; font-weight:600;">
+              📁 ${plans.length} ${plans.length === 1 ? 'Planeación' : 'Planeaciones'}
+            </span>
+            <button type="button" onclick="document.getElementById('docenteExpedienteModalDocentesPage').remove()" style="background:none; border:none; font-size:26px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 6px;">&times;</button>
+          </div>
+        </div>
+
+        <!-- Body Table -->
+        <div style="flex:1; padding:20px; overflow-y:auto; background:var(--surface, #1e293b);">
+          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="border-bottom:1.5px solid var(--border, #334155); text-align:left; color:var(--text-muted);">
+                <th style="padding:10px;">Área / Grado</th>
+                <th style="padding:10px;">Semana</th>
+                <th style="padding:10px;">Fecha Aplicación</th>
+                <th style="padding:10px;">Subida</th>
+                <th style="padding:10px;">Estado</th>
+                <th style="padding:10px; text-align:center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${plans.map(p => {
+                let pdfUrl = p.nombre_archivo;
+                if (pdfUrl && !pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
+                  pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${p.nombre_archivo}`;
+                }
+                const rawName = p.nombre_archivo ? p.nombre_archivo.split('/').pop().split('?')[0].replace(/^\d+_[_\-]*/, '') : 'Planeacion.pdf';
+                const cleanName = rawName.endsWith('.pdf') ? rawName : `${rawName}.pdf`;
+
+                return `
+                  <tr style="border-bottom:1px solid var(--border, #334155);">
+                    <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
+                    <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
+                    <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+                    <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
+                    <td style="padding:10px;">${badge(p.estado)}</td>
+                    <td style="padding:10px; text-align:center; white-space:nowrap;">
+                      ${pdfUrl ? `
+                        <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+                        <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#10b981; color:#fff;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
+                      ` : ''}
+                      <button class="btn btn-light" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
+                      <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deletePlaneacion(${p.id})">🗑️ Eliminar</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  } catch (err) {
+    showToast('Error al cargar expediente del docente', 'error');
+  }
 }
 
 async function saveDocente(e) {

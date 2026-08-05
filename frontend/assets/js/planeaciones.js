@@ -11,34 +11,206 @@ async function initPlaneacionesPage() {
   const user = Storage.getUser();
   const formCard = document.getElementById('formCard');
   const listCard = document.getElementById('listCard');
-  const docenteGroup = document.getElementById('docenteGroup');
-
-  // El formulario de registro está disponible para TODOS
-  if (formCard) formCard.style.display = 'block';
-  if (listCard) {
-    listCard.classList.remove('c12');
-    listCard.classList.add('c8');
-  }
+  const adminDocentesCard = document.getElementById('adminDocentesCard');
 
   if (user && user.rol === 'administrador') {
-    // Pedro el Administrador solo consulta la lista completa de planeaciones
+    // Administrador: Mostrar listado de Docentes con su botón de Expediente de Planeaciones
     if (formCard) formCard.style.display = 'none';
-    if (listCard) {
-      listCard.classList.remove('c8');
-      listCard.classList.add('c12');
-    }
+    if (listCard) listCard.style.display = 'none';
+    if (adminDocentesCard) adminDocentesCard.style.display = 'block';
+    await loadAdminDocentes();
   } else {
-    // Los docentes ven el formulario para subir sus planeaciones
+    // Docente: Mostrar formulario para registrar y tabla con sus planeaciones
+    if (adminDocentesCard) adminDocentesCard.style.display = 'none';
     if (formCard) formCard.style.display = 'block';
     if (listCard) {
+      listCard.style.display = 'block';
       listCard.classList.remove('c12');
       listCard.classList.add('c8');
     }
     const docenteGroup = document.getElementById('docenteGroup');
     if (docenteGroup) docenteGroup.style.display = 'none';
+    await loadPlaneaciones();
+  }
+}
+
+let adminDocentesData = [];
+
+async function loadAdminDocentes() {
+  try {
+    adminDocentesData = await API.Docentes.getAll();
+    allPlaneaciones = await API.Planeaciones.getAll();
+    renderAdminDocentes(adminDocentesData);
+  } catch (err) {
+    showToast('Error al obtener lista de docentes', 'error');
+  }
+}
+
+function filterAdminDocentes() {
+  const q = (document.getElementById('searchAdminDocentes').value || '').toLowerCase().trim();
+  if (!q) {
+    renderAdminDocentes(adminDocentesData);
+    return;
+  }
+  const filtered = adminDocentesData.filter(d => 
+    (d.nombre || '').toLowerCase().includes(q) ||
+    (d.correo || '').toLowerCase().includes(q) ||
+    (d.sede_nombre || '').toLowerCase().includes(q) ||
+    (d.jornada_nombre || '').toLowerCase().includes(q) ||
+    (d.areas || '').toLowerCase().includes(q) ||
+    (d.grados || '').toLowerCase().includes(q)
+  );
+  renderAdminDocentes(filtered);
+}
+
+function renderAdminDocentes(list = adminDocentesData) {
+  const tbody = document.getElementById('adminDocentesList');
+  if (!tbody) return;
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No se encontraron docentes registrados</td></tr>`;
+    return;
   }
 
-  await loadPlaneaciones();
+  tbody.innerHTML = list.map(d => {
+    const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
+    const gradosTags = d.grados ? d.grados.split(', ').map(g => `<span class="badge-grade" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(245,158,11,0.15); color:#f59e0b; border-radius:6px;">${g}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin grados</span>';
+    
+    const totalPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(d.id)).length;
+
+    return `
+      <tr style="border-bottom: 1px solid var(--border, #334155);">
+        <td style="padding: 12px 10px;">
+          <strong style="font-size: 13px; color: var(--text-main, #f1f5f9);">${d.nombre}</strong><br>
+          <small style="color: var(--text-muted, #94a3b8); font-size: 11.5px;">📧 ${d.correo || 'Sin correo'}</small>
+        </td>
+        <td style="padding: 12px 10px;">
+          <strong>${d.sede_nombre || 'I.E. Guaimaral'}</strong><br>
+          <small style="color: var(--text-muted, #94a3b8);">${d.jornada_nombre || 'Mañana'}</small>
+        </td>
+        <td style="padding: 12px 10px; max-width: 240px;">${areasTags}</td>
+        <td style="padding: 12px 10px; max-width: 140px;">${gradosTags}</td>
+        <td style="text-align: center; white-space: nowrap; padding: 12px 10px;">
+          <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
+            📁 Planeaciones ${totalPlans > 0 ? `(${totalPlans})` : ''}
+          </button>
+          <button class="btn btn-light" onclick="window.location.href='docentes.html?edit=${d.id}'" style="padding: 6px 10px; font-size: 12px; margin-right: 4px;">
+            ✏️ Editar
+          </button>
+          <button class="btn btn-danger" onclick="deleteDocenteFromAdminTable(${d.id})" style="padding: 6px 10px; font-size: 12px;">
+            🗑️ Eliminar
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function deleteDocenteFromAdminTable(id) {
+  if (!confirm('⚠️ ¿Está seguro de eliminar este docente? Se eliminarán también sus planeaciones asociadas del sistema.')) return;
+  try {
+    if (API.Docentes.remove) {
+      await API.Docentes.remove(id);
+    } else {
+      await API.Docentes.delete(id);
+    }
+    showToast('✅ Docente y sus registros eliminados correctamente', 'success');
+    await loadAdminDocentes();
+  } catch (err) {
+    showToast('Error al eliminar docente: ' + (err.message || ''), 'error');
+  }
+}
+
+function openDocenteExpedienteModal(docenteId) {
+  const plans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
+  const doc = adminDocentesData.find(d => String(d.id) === String(docenteId)) || (plans.length > 0 ? { nombre: plans[0].docente_nombre, sede_nombre: plans[0].sede_nombre, jornada_nombre: plans[0].jornada_nombre } : null);
+  const docName = doc ? doc.nombre : 'Docente';
+
+  if (!plans || plans.length === 0) {
+    showToast(`ℹ️ El docente "${docName}" no registra planeaciones aún`, 'info');
+    return;
+  }
+
+  const docSede = (doc && doc.sede_nombre) || plans[0].sede_nombre || 'I.E. Guaimaral';
+  const docJornada = (doc && doc.jornada_nombre) || plans[0].jornada_nombre || 'Mañana';
+  const docCorreo = (doc && doc.correo) || '--';
+
+  const existing = document.getElementById('docenteExpedienteModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'docenteExpedienteModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1100px; width:96%; max-height:90vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.5); border:1px solid var(--border, #334155); overflow:hidden;">
+      
+      <!-- Topbar Header -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:16px 22px; border-bottom:1px solid var(--border, #334155); flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg, #0284c7, #38bdf8); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:bold;">
+            ${(docName || 'D').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:18px; font-weight:700; color:var(--primary-accent, #38bdf8);">
+              Expediente de Planeaciones · ${docName}
+            </h3>
+            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">
+              Correo: ${docCorreo} · Sede: ${docSede} · Jornada: ${docJornada}
+            </small>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:12px; padding:4px 12px; background:rgba(56,189,248,0.15); color:#38bdf8; border-radius:20px; font-weight:600;">
+            📁 ${plans.length} ${plans.length === 1 ? 'Planeación' : 'Planeaciones'}
+          </span>
+          <button type="button" onclick="document.getElementById('docenteExpedienteModal').remove()" style="background:none; border:none; font-size:26px; cursor:pointer; color:var(--text-muted, #94a3b8); line-height:1; padding:0 6px;">&times;</button>
+        </div>
+      </div>
+
+      <!-- Body Table -->
+      <div style="flex:1; padding:20px; overflow-y:auto; background:var(--surface, #1e293b);">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="border-bottom:1.5px solid var(--border, #334155); text-align:left; color:var(--text-muted);">
+              <th style="padding:10px;">Área / Grado</th>
+              <th style="padding:10px;">Semana</th>
+              <th style="padding:10px;">Fecha Aplicación</th>
+              <th style="padding:10px;">Subida</th>
+              <th style="padding:10px;">Estado</th>
+              <th style="padding:10px; text-align:center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${plans.map(p => {
+              const pdfUrl = getPdfUrl(p);
+              const cleanName = getCleanPdfFileName(p);
+              return `
+                <tr style="border-bottom:1px solid var(--border, #334155);">
+                  <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
+                  <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
+                  <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+                  <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
+                  <td style="padding:10px;">${badge(p.estado)}</td>
+                  <td style="padding:10px; text-align:center; white-space:nowrap;">
+                    ${pdfUrl ? `
+                      <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+                      <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#10b981; color:#fff;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
+                    ` : ''}
+                    <button class="btn btn-light" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
+                    <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deletePlaneacion(${p.id})">🗑️ Eliminar</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
 }
 
 function startLiveClock() {
@@ -82,21 +254,21 @@ async function loadDocentesSelect() {
 function handleDragOver(e) {
   e.preventDefault();
   e.stopPropagation();
-  const dz = document.getElementById('dropZone');
+  const dz = document.getElementById('pdfDropzone') || document.getElementById('dropZone');
   if (dz) dz.style.background = 'rgba(56,189,248,0.15)';
 }
 
 function handleDragLeave(e) {
   e.preventDefault();
   e.stopPropagation();
-  const dz = document.getElementById('dropZone');
+  const dz = document.getElementById('pdfDropzone') || document.getElementById('dropZone');
   if (dz) dz.style.background = 'rgba(56,189,248,0.04)';
 }
 
 function handleFileDrop(e) {
   e.preventDefault();
   e.stopPropagation();
-  const dz = document.getElementById('dropZone');
+  const dz = document.getElementById('pdfDropzone') || document.getElementById('dropZone');
   if (dz) dz.style.background = 'rgba(56,189,248,0.04)';
 
   const files = e.dataTransfer ? e.dataTransfer.files : null;
@@ -111,7 +283,7 @@ function handleFileDrop(e) {
 
 function updateFileUI(file) {
   const badge = document.getElementById('selectedFileBadge');
-  const content = document.getElementById('dropZoneContent');
+  const content = document.getElementById('dropzoneContent') || document.getElementById('dropZoneContent');
   const nameLabel = document.getElementById('fileNameLabel');
   const sizeLabel = document.getElementById('fileSizeLabel');
 
@@ -233,6 +405,8 @@ function downloadPdfFile(planId, fallbackUrl, filename) {
 function renderPlaneaciones(plans) {
   const tbody = document.getElementById('plansList');
   const user = Storage.getUser();
+
+  if (!tbody) return;
 
   if (!plans || plans.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 20px;">No se encontraron planeaciones registradas</td></tr>`;

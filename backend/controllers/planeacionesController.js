@@ -47,13 +47,16 @@ exports.getAll = async (req, res) => {
 
     const mapped = (rows || []).map(p => {
       const d = p.docentes || {};
+      const sId = (d && d.sede_id !== undefined && d.sede_id !== null) ? parseInt(d.sede_id) : null;
+      const jId = (d && d.jornada_id !== undefined && d.jornada_id !== null) ? parseInt(d.jornada_id) : null;
+
       return {
         ...p,
         docente_nombre: d.nombre || 'Docente Institucional',
         docente_correo: d.correo || '',
         docente_doc: d.documento || '--',
-        sede_nombre: SEDES_MAP[d.sede_id || 1] || 'I.E. Guaimaral',
-        jornada_nombre: JORNADAS_MAP[d.jornada_id || 1] || 'Mañana'
+        sede_nombre: (sId && SEDES_MAP[sId]) ? SEDES_MAP[sId] : (d.sede_nombre || 'I.E. Guaimaral'),
+        jornada_nombre: (jId && JORNADAS_MAP[jId]) ? JORNADAS_MAP[jId] : (d.jornada_nombre || 'Mañana')
       };
     });
 

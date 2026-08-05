@@ -21,7 +21,7 @@
           <span>📊</span> Panel Principal
         </a>
         <a href="docentes.html" class="active">
-          <span>👨‍🏫</span> Docentes
+          <span>👨‍🏫</span> Crear Docentes
         </a>
         <a href="planeaciones.html">
           <span>📁</span> Planeaciones
@@ -41,7 +41,7 @@
     <div class="main-content">
       <header class="topbar">
         <div class="topbar-title" style="display: flex; align-items: center; gap: 10px;">
-          <span>👨‍🏫 Gestión Institucional de Docentes</span>
+          <span>👨‍🏫 Crear y Gestionar Docentes</span>
           <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
             <span class="pulse-dot"></span> Módulo Activo
           </span>
@@ -57,7 +57,7 @@
           <!-- Form Register/Edit Docente -->
           <!-- Form Register/Edit Docente -->
           <div class="card c12">
-            <h2 id="formTitle">Registrar Docente</h2>
+            <h2 id="formTitle">➕ Crear Docente</h2>
             <form id="docenteForm" onsubmit="saveDocente(event)">
               <input type="hidden" id="docenteId">
               
@@ -129,34 +129,6 @@
               </div>
             </form>
           </div>
-
-          <!-- Docentes List -->
-          <div class="card c12">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
-              <h2 style="margin: 0;">Listado de Docentes Registrados</h2>
-              <input type="text" id="searchDocentes" placeholder="🔍 Buscar docente por nombre, correo, sede..." oninput="filterDocentes()" style="max-width: 340px; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); outline: none; font-size: 13px;">
-            </div>
-            <div class="table-responsive">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Docente / Contacto</th>
-                    <th>Sede / Jornada</th>
-                    <th>Áreas Asignadas</th>
-                    <th>Grados</th>
-                    <th style="text-align: center;">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="docentesList">
-                  <tr>
-                    <td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">
-                      Cargando docentes...
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </main>
     </div>
@@ -164,6 +136,7 @@
 
   <script src="assets/js/api.js"></script>
   <script src="assets/js/app.js"></script>
+  <script src="assets/js/planeaciones.js"></script>
   <script src="assets/js/docentes.js"></script>
 </body>
 </html>

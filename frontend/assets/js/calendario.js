@@ -76,3 +76,33 @@ async function deleteSemana(id) {
     showToast(err.message || 'Error al eliminar semana', 'error');
   }
 }
+
+async function cargarPlantillaColombia() {
+  const anio = parseInt(document.getElementById('anio').value) || new Date().getFullYear();
+  if (!confirm(`¿Desea cargar automáticamente las semanas de exención oficiales de Colombia (MEN) para el año ${anio}?`)) return;
+
+  const excepcionesOficiales = [
+    { numero_semana: 13, motivo: 'Semana Santa / Desarrollo Institucional' },
+    { numero_semana: 25, motivo: 'Receso Escolar y Vacaciones Mitad de Año (Semana 1)' },
+    { numero_semana: 26, motivo: 'Receso Escolar y Vacaciones Mitad de Año (Semana 2)' },
+    { numero_semana: 41, motivo: 'Semana de Receso Escolar de Octubre (Decreto 1373 MEN)' },
+    { numero_semana: 49, motivo: 'Evaluación e Informe de Cierre Académico' },
+    { numero_semana: 50, motivo: 'Desarrollo Institucional y Cierre Lectivo de Fin de Año' }
+  ];
+
+  showToast('⏳ Registrando calendario escolar de Colombia...', 'info');
+
+  try {
+    for (const ex of excepcionesOficiales) {
+      await API.Semanas.create({
+        anio,
+        numero_semana: ex.numero_semana,
+        motivo: ex.motivo
+      }).catch(() => {});
+    }
+    showToast(`✅ Plantilla oficial de Colombia ${anio} cargada con éxito`, 'success');
+    await loadSemanas();
+  } catch (err) {
+    showToast('Error al cargar plantilla oficial', 'error');
+  }
+}

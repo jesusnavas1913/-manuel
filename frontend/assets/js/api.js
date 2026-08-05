@@ -101,6 +101,9 @@ const API = {
     remove: (id) => apiFetch(`/docentes/${id}`, {
       method: 'DELETE'
     }),
+    delete: (id) => apiFetch(`/docentes/${id}`, {
+      method: 'DELETE'
+    }),
     getSedes: () => apiFetch('/docentes/sedes'),
     getJornadas: () => apiFetch('/docentes/jornadas')
   },

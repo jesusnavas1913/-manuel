@@ -163,25 +163,28 @@ function applyRolePermissions(user) {
   if (!user) return;
   const path = window.location.pathname.toLowerCase();
 
+  // Agregar clase CSS al body para ocultamiento instantáneo y sin parpadeo
+  document.body.classList.remove('role-admin', 'role-docente');
+  document.body.classList.add(user.rol === 'administrador' ? 'role-admin' : 'role-docente');
+
   const runHide = () => {
     if (user.rol === 'docente') {
       // Ocultar enlaces de módulos administrativos para docentes (Panel Principal, Docentes, Calendario, Reportes)
       document.querySelectorAll('a[href="dashboard.html"], a[href="docentes.html"], a[href="calendario.html"], a[href="reportes.html"]').forEach(el => {
         el.style.display = 'none';
+        if (el.parentElement) el.parentElement.style.display = 'none';
       });
 
       // Proteger navegación directa por URL
       if (path.endsWith('dashboard.html') || path.endsWith('docentes.html') || path.endsWith('calendario.html') || path.endsWith('reportes.html')) {
-        alert('Acceso restringido: Los docentes ingresan directamente a la gestión de sus Planeaciones.');
         window.location.href = 'planeaciones.html';
       }
     }
   };
 
+  runHide();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', runHide);
-  } else {
-    runHide();
   }
 }
 

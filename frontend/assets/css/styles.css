@@ -29,6 +29,14 @@
   --transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Regla estricta para ocultar menú administrativo a docentes */
+body.role-docente a[href="dashboard.html"],
+body.role-docente a[href="docentes.html"],
+body.role-docente a[href="calendario.html"],
+body.role-docente a[href="reportes.html"] {
+  display: none !important;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

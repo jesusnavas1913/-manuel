@@ -49,7 +49,7 @@ exports.remove = async (req, res) => {
     const { data, error } = await supabase
       .from('semanas_institucionales')
       .delete()
-      .eq('id', req.params.id)
+      .eq('id', parseInt(req.params.id))
       .select();
 
     if (error) throw error;
