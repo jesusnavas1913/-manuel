@@ -141,14 +141,32 @@
             </div>
           </div>
 
-          <!-- Current Week Info -->
+          <!-- Current Week Info & Control Widget -->
           <div class="card c4">
-            <h2>Semana Actual</h2>
-            <div id="weekInfo" style="font-size: 15px; display: flex; flex-direction: column; gap: 8px;">
+            <h2>Semana Actual & Control</h2>
+            <div id="weekInfo" style="font-size: 14.5px; display: flex; flex-direction: column; gap: 8px;">
               <p><b>Semana ISO:</b> <span id="currentWeekNum">--</span></p>
               <p><b>Año Lectivo:</b> <span id="currentYear">--</span></p>
             </div>
-            <div class="notice" style="margin-top: 20px;">
+            
+            <div style="margin-top: 16px; padding: 12px; background: var(--bg, #f8fafc); border-radius: 10px; border: 1px solid var(--border);">
+              <small style="font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 8px;">📊 Cumplimiento de la Semana Actual:</small>
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>🟢 Entregaron:</span>
+                  <strong id="dashWeekOkCount" style="color: #10b981;">0</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>🔴 Sin Entregar:</span>
+                  <strong id="dashWeekPendingCount" style="color: #ef4444;">0</strong>
+                </div>
+              </div>
+              <a href="planeaciones.html?filter=pending" class="btn btn-danger btn-sm" style="display: block; text-align: center; margin-top: 12px; font-size: 11.5px; font-weight: 700; background: #dc2626; text-decoration: none;">
+                🔴 Ver Docentes Sin Entregar
+              </a>
+            </div>
+
+            <div class="notice" style="margin-top: 16px;">
               Las semanas institucionales programadas no generan sanción de retraso en el reporte.
             </div>
           </div>

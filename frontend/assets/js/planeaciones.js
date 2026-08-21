@@ -18,7 +18,15 @@ async function initPlaneacionesPage() {
     if (formCard) formCard.style.display = 'none';
     if (listCard) listCard.style.display = 'none';
     if (adminDocentesCard) adminDocentesCard.style.display = 'block';
-    await loadAdminDocentes();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const filterParam = urlParams.get('filter');
+    if (filterParam === 'pending' || filterParam === 'ok' || filterParam === 'all') {
+      currentAdminDocenteFilter = filterParam;
+      setAdminDocenteFilter(filterParam);
+    } else {
+      await loadAdminDocentes();
+    }
   } else {
     // Docente: Mostrar formulario para registrar y tabla con sus planeaciones
     if (adminDocentesCard) adminDocentesCard.style.display = 'none';
