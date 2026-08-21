@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I.E. Guaimaral · Reportes e Informes</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body onload="requireSession(); initReportesPage()">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          <img src="assets/img/escudo.png" alt="Escudo" style="height: 36px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+          <span>I.E. GUAIMARAL</span>
+        </h1>
+        <p>I.E. Guaimaral · Sistema Académico</p>
+      </div>
+      <nav class="menu">
+        <a href="dashboard.html">
+          <span>📊</span> Panel Principal
+        </a>
+        <a href="docentes.html">
+          <span>👨‍🏫</span> Crear Docentes
+        </a>
+        <a href="planeaciones.html">
+          <span>📁</span> Planeaciones
+        </a>
+        <a href="calendario.html">
+          <span>📅</span> Calendario
+        </a>
+        <a href="reportes.html" class="active">
+          <span>📈</span> Reportes
+        </a>
+        <a href="#" onclick="logout()" class="logout-btn">
+          <span>🚪</span> Cerrar sesión
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-title" style="display: flex; align-items: center; gap: 10px;">
+          <span>📈 Informes de Cumplimiento Institucional</span>
+          <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="pulse-dot"></span> Consola de Reportes
+          </span>
+        </div>
+        <div class="user-badge">
+          <span id="userName">Cargando...</span>
+          <span id="userRole" class="role-tag">--</span>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="card c12">
+          <h2>Filtros y Búsqueda de Reporte</h2>
+          <div class="toolbar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <input type="text" id="fSearch" placeholder="🔍 Búsqueda rápida (docente, materia, documento...)" oninput="applyFiltersInstant()" class="select-interactive" style="flex: 2; min-width: 240px;">
+
+            <select id="fDocente" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 160px;">
+              <option value="">Todos los docentes</option>
+            </select>
+
+            <select id="fSede" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 150px;">
+              <option value="">Todas las sedes</option>
+            </select>
+
+            <select id="fJornada" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 140px;">
+              <option value="">Todas las jornadas</option>
+            </select>
+
+            <input type="text" id="fGrado" placeholder="Grado..." oninput="applyFiltersInstant()" list="dlGradosReport" style="flex: 1; min-width: 110px;">
+            <datalist id="dlGradosReport">
+              <option value="Prejardín"></option>
+              <option value="Jardín"></option>
+              <option value="Transición"></option>
+              <option value="1°"></option><option value="2°"></option><option value="3°"></option><option value="4°"></option><option value="5°"></option>
+              <option value="6°"></option><option value="7°"></option><option value="8°"></option><option value="9°"></option>
+              <option value="10°"></option><option value="11°"></option>
+            </datalist>
+
+            <select id="fEstado" onchange="applyFiltersInstant()" class="select-interactive" style="flex: 1; min-width: 150px;">
+              <option value="">Todos los estados</option>
+              <option value="a_tiempo">Entregado a tiempo</option>
+              <option value="retraso">Con retraso</option>
+              <option value="semana_institucional">Semana institucional</option>
+              <option value="no_entrego">No entregó</option>
+            </select>
+
+            <input type="number" id="fSemana" placeholder="Semana..." min="1" max="53" oninput="applyFiltersInstant()" style="flex: 1; min-width: 100px;">
+            
+            <button class="btn btn-light" onclick="clearFilters()" style="white-space: nowrap;">Limpiar Filtros</button>
+          </div>
+
+          <!-- Active Filter Badges Container -->
+          <div id="activeFilterChips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px;"></div>
+
+          <!-- Quick Live Counter Bar & Exports -->
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: var(--bg); padding: 12px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; font-weight: 700;">
+              <span>📊 Total: <span id="statTotal" style="color: var(--primary-accent);">0</span></span>
+              <span>🟢 A tiempo: <span id="statATiempo" style="color: #059669;">0</span></span>
+              <span>🟡 Retrasos: <span id="statRetraso" style="color: #d97706;">0</span></span>
+              <span>🔴 No entregó: <span id="statNoEntrego" style="color: #dc2626;">0</span></span>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn btn-success" onclick="exportExcel()" style="padding: 6px 12px; font-size: 12px;">
+                📊 Excel (.xls)
+              </button>
+              <button class="btn btn-primary" onclick="exportCSV()" style="padding: 6px 12px; font-size: 12px;">
+                📥 CSV
+              </button>
+              <button class="btn btn-light" onclick="exportPDF()" style="padding: 6px 12px; font-size: 12px;">
+                📄 PDF
+              </button>
+            </div>
+          </div>
+
+            <div class="table-responsive" style="margin-top: 16px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th onclick="sortReportBy('docente_nombre')" style="cursor:pointer;" title="Click para ordenar por docente">Docente</th>
+                    <th onclick="sortReportBy('docente_doc')" style="cursor:pointer;" title="Click para ordenar por documento">Documento</th>
+                    <th onclick="sortReportBy('sede_nombre')" style="cursor:pointer;" title="Click para ordenar por sede">Sede</th>
+                    <th onclick="sortReportBy('jornada_nombre')" style="cursor:pointer;" title="Click para ordenar por jornada">Jornada</th>
+                    <th onclick="sortReportBy('area')" style="cursor:pointer;" title="Click para ordenar por área">Área</th>
+                    <th onclick="sortReportBy('grado')" style="cursor:pointer;" title="Click para ordenar por grado">Grado</th>
+                    <th onclick="sortReportBy('numero_semana')" style="cursor:pointer;" title="Click para ordenar por semana">Semana</th>
+                    <th onclick="sortReportBy('fecha_subida')" style="cursor:pointer;" title="Click para ordenar por fecha">Subida</th>
+                    <th onclick="sortReportBy('estado')" style="cursor:pointer;" title="Click para ordenar por estado">Estado</th>
+                    <th>Archivo</th>
+                  </tr>
+                </thead>
+                <tbody id="reportTableBody">
+                  <tr>
+                    <td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Generando reporte...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div id="paginationControls" style="display:flex; justify-content:center; align-items:center; gap:16px; margin-top:20px; font-weight:600;">
+              <button class="btn btn-light" id="btnPrevPage" onclick="changePage(-1)">Anterior</button>
+              <span>Página <span id="lblCurrentPage">1</span> de <span id="lblTotalPages">1</span></span>
+              <button class="btn btn-light" id="btnNextPage" onclick="changePage(1)">Siguiente</button>
+            </div>
+          </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/reportes.js"></script>
+</body>
+</html>

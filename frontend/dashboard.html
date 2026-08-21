@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I.E. Guaimaral · Panel Principal</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body onload="requireSession(); initDashboard()">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          <img src="assets/img/escudo.png" alt="Escudo" style="height: 36px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+          <span>I.E. GUAIMARAL</span>
+        </h1>
+        <p>I.E. Guaimaral · Sistema Académico</p>
+      </div>
+      <nav class="menu">
+        <a href="dashboard.html" class="active">
+          <span>📊</span> Panel Principal
+        </a>
+        <a href="docentes.html">
+          <span>👨‍🏫</span> Crear Docentes
+        </a>
+        <a href="planeaciones.html">
+          <span>📁</span> Planeaciones
+        </a>
+        <a href="calendario.html">
+          <span>📅</span> Calendario
+        </a>
+        <a href="reportes.html">
+          <span>📈</span> Reportes
+        </a>
+        <a href="#" onclick="logout()" class="logout-btn">
+          <span>🚪</span> Cerrar sesión
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-title" style="display: flex; align-items: center; gap: 10px;">
+          <span>📊 Panel Principal</span>
+          <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="pulse-dot"></span> En Línea
+          </span>
+        </div>
+        <div class="user-badge">
+          <span id="userName">Cargando...</span>
+          <span id="userRole" class="role-tag">--</span>
+        </div>
+      </header>
+
+      <main class="main">
+        <!-- Banner Ejecutivo -->
+        <div class="executive-banner">
+          <div>
+            <h2>Gestión Institucional de Planeaciones Didácticas</h2>
+            <p>Monitoreo centralizado de entregas, seguimiento docente y control académico en tiempo real.</p>
+          </div>
+        </div>
+
+        <div class="grid">
+          <!-- KPIs -->
+          <div class="card c3 kpi">
+            <small>👨‍🏫 Docentes Activos</small>
+            <b id="kpiDocentes">0</b>
+          </div>
+          <div class="card c3 kpi ok">
+            <small>🟢 Entregas a Tiempo</small>
+            <b id="kpiATiempo">0</b>
+          </div>
+          <div class="card c3 kpi late">
+            <small>🟡 Entregas con Retraso</small>
+            <b id="kpiRetraso">0</b>
+          </div>
+          <div class="card c3 kpi no">
+            <small>🔴 No Entregó</small>
+            <b id="kpiNoEntrego">0</b>
+          </div>
+
+          <!-- Visual Progress Card -->
+          <div class="card c12">
+            <h2 style="font-size: 17px;">📈 Indicadores Visuales de Cumplimiento Institucional</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 8px;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 6px;">
+                  <span>🟢 Entregas a Tiempo</span>
+                  <span id="pctATiempo">0%</span>
+                </div>
+                <div style="background: var(--border); height: 12px; border-radius: 6px; overflow: hidden;">
+                  <div id="barATiempo" style="background: linear-gradient(90deg, #059669, #10b981); height: 100%; width: 0%; transition: width 0.6s ease;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 6px;">
+                  <span>🟡 Entregas con Retraso</span>
+                  <span id="pctRetraso">0%</span>
+                </div>
+                <div style="background: var(--border); height: 12px; border-radius: 6px; overflow: hidden;">
+                  <div id="barRetraso" style="background: linear-gradient(90deg, #d97706, #f59e0b); height: 100%; width: 0%; transition: width 0.6s ease;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 6px;">
+                  <span>🔴 Sin Entrega</span>
+                  <span id="pctNoEntrego">0%</span>
+                </div>
+                <div style="background: var(--border); height: 12px; border-radius: 6px; overflow: hidden;">
+                  <div id="barNoEntrego" style="background: linear-gradient(90deg, #dc2626, #ef4444); height: 100%; width: 0%; transition: width 0.6s ease;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Latest Deliveries -->
+          <div class="card c8">
+            <h2>Últimas Entregas</h2>
+            <div class="table-responsive">
+              <table id="latestTable">
+                <thead>
+                  <tr>
+                    <th>Docente</th>
+                    <th>Área</th>
+                    <th>Grado</th>
+                    <th>Subida</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="latestList">
+                  <tr>
+                    <td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Cargando planeaciones...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Current Week Info -->
+          <div class="card c4">
+            <h2>Semana Actual</h2>
+            <div id="weekInfo" style="font-size: 15px; display: flex; flex-direction: column; gap: 8px;">
+              <p><b>Semana ISO:</b> <span id="currentWeekNum">--</span></p>
+              <p><b>Año Lectivo:</b> <span id="currentYear">--</span></p>
+            </div>
+            <div class="notice" style="margin-top: 20px;">
+              Las semanas institucionales programadas no generan sanción de retraso en el reporte.
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/dashboard.js"></script>
+</body>
+</html>

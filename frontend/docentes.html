@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I.E. Guaimaral · Gestión de Docentes</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body onload="requireSession(); initDocentesPage()">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          <img src="assets/img/escudo.png" alt="Escudo" style="height: 36px; width: auto; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+          <span>I.E. GUAIMARAL</span>
+        </h1>
+        <p>I.E. Guaimaral · Sistema Académico</p>
+      </div>
+      <nav class="menu">
+        <a href="dashboard.html">
+          <span>📊</span> Panel Principal
+        </a>
+        <a href="docentes.html" class="active">
+          <span>👨‍🏫</span> Crear Docentes
+        </a>
+        <a href="planeaciones.html">
+          <span>📁</span> Planeaciones
+        </a>
+        <a href="calendario.html">
+          <span>📅</span> Calendario
+        </a>
+        <a href="reportes.html">
+          <span>📈</span> Reportes
+        </a>
+        <a href="#" onclick="logout()" class="logout-btn">
+          <span>🚪</span> Cerrar sesión
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="topbar-title" style="display: flex; align-items: center; gap: 10px;">
+          <span>👨‍🏫 Crear y Gestionar Docentes</span>
+          <span style="font-size: 12px; background: #e0f2fe; color: #0369a1; padding: 3px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="pulse-dot"></span> Módulo Activo
+          </span>
+        </div>
+        <div class="user-badge">
+          <span id="userName">Cargando...</span>
+          <span id="userRole" class="role-tag">--</span>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="grid">
+          <!-- Form Register/Edit Docente -->
+          <!-- Form Register/Edit Docente -->
+          <div class="card c12">
+            <h2 id="formTitle">➕ Crear Docente</h2>
+            <form id="docenteForm" onsubmit="saveDocente(event)">
+              <input type="hidden" id="docenteId">
+              
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                <div class="form-group">
+                  <label for="nombre">Nombre Completo *</label>
+                  <input type="text" id="nombre" required placeholder="Ej: María Elena Rodríguez" oninput="autoGenerateEmail()">
+                </div>
+
+                <div class="form-group">
+                  <label for="correo">Correo Electrónico (Auto-Generado)</label>
+                  <input type="email" id="correo" placeholder="maria.elena@guaimaral.edu.co">
+                  <small style="color: var(--text-muted); font-size: 11px; display: block; margin-top: 4px;">Generado a partir de los dos primeros nombres.</small>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+                <div class="form-group">
+                  <label for="sedeId">Sede Institucional *</label>
+                  <select id="sedeId" onchange="autoGenerateEmail()">
+                    <option value="">Seleccione una sede...</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="jornadaId">Jornada *</label>
+                  <select id="jornadaId">
+                    <option value="">Seleccione una jornada...</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Fila de Contraseña (Edición y Registro) -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;" id="passwordRow">
+                <div class="form-group">
+                  <label for="password">Contraseña de Acceso para el Docente</label>
+                  <input type="text" id="password" placeholder="Defina o modifique la clave (Por defecto: admin123)">
+                  <small style="color: var(--text-muted); font-size: 11px; display: block; margin-top: 4px;">Si está editando y deja este campo en blanco, mantendrá su clave actual.</small>
+                </div>
+                <div class="form-group">
+                  <!-- Columna vacía para balancear grid -->
+                </div>
+              </div>
+
+              <!-- Multi-select Áreas Curriculares -->
+              <div class="form-group">
+                <label>Áreas / Asignaturas (Seleccione una o varias) *</label>
+                <input type="text" id="searchAreaChip" placeholder="🔍 Buscar asignatura (ej: Física, Biología, Filosofía, Lectura Crítica...)" oninput="filterAreaChips()" style="margin-bottom: 8px; padding: 7px 12px; font-size: 12.5px; width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-sm); outline: none;">
+                <div class="chip-group" id="areasGroup">
+                  <!-- Se genera dinámicamente -->
+                </div>
+              </div>
+
+              <!-- Multi-select Grados Académicos -->
+              <div class="form-group">
+                <label>Grados Académicos (Seleccione uno o varios) *</label>
+                <div class="chip-group" id="gradosGroup">
+                  <!-- Se genera dinámicamente -->
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="submit" id="btnSave" class="btn btn-success">
+                  Guardar Docente
+                </button>
+                <button type="button" id="btnCancel" class="btn btn-light" style="display: none;" onclick="resetForm()">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/planeaciones.js"></script>
+  <script src="assets/js/docentes.js"></script>
+</body>
+</html>
