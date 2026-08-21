@@ -1172,5 +1172,36 @@ tbody tr:nth-child(n+11) { animation-delay: 0.55s; }
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
   }
+/* ── Centro de Notificaciones y Alertas (TopBar) ──────────────── */
+.notif-bell-btn:hover {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: var(--primary-accent, #2563eb) !important;
+  transform: scale(1.05);
+}
+
+.notif-badge-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 10px;
+  border: 2px solid var(--surface, #ffffff);
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.4);
+  animation: pulseNotif 2s infinite;
+}
+
+@keyframes pulseNotif {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes popoverFadeIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 

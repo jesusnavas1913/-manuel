@@ -18,6 +18,7 @@ function requireSession() {
     applyRolePermissions(user);
     initThemeToggle();
     initImpersonationBanner();
+    initNotificationCenter();
   }
 }
 
@@ -331,5 +332,199 @@ function initImpersonationBanner() {
     `;
     document.body.prepend(banner);
   }
+}
+
+// ── Centro de Notificaciones & Alertas Internas ────────────────
+async function initNotificationCenter() {
+  const user = Storage.getUser();
+  if (!user) return;
+
+  const run = async () => {
+    const badge = document.querySelector('.user-badge');
+    if (!badge || document.getElementById('btnNotificationBell')) return;
+
+    const btnBell = document.createElement('button');
+    btnBell.id = 'btnNotificationBell';
+    btnBell.type = 'button';
+    btnBell.className = 'notif-bell-btn';
+    btnBell.style.cssText = 'position:relative; background:var(--bg, #f1f5f9); border:1px solid var(--border, #cbd5e1); border-radius:50%; width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; margin-left:8px; transition:all 0.2s ease;';
+    btnBell.title = 'Centro de Notificaciones y Alertas';
+    btnBell.innerHTML = `🔔 <span id="notifBadgeCount" class="notif-badge-count" style="display:none;">0</span>`;
+
+    badge.insertBefore(btnBell, badge.firstChild);
+
+    const notifications = await generateUserNotifications(user);
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    const countEl = document.getElementById('notifBadgeCount');
+    if (countEl && unreadCount > 0) {
+      countEl.textContent = unreadCount;
+      countEl.style.display = 'inline-block';
+    }
+
+    btnBell.onclick = (e) => {
+      e.stopPropagation();
+      toggleNotificationPopover(notifications);
+    };
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+}
+
+async function generateUserNotifications(user) {
+  const notifications = [];
+  const currentW = weekNumber(new Date());
+
+  try {
+    const plans = await API.Planeaciones.getAll();
+
+    if (user.rol === 'docente') {
+      const myId = user.docente_id;
+      const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego' && String(p.docente_id) === String(myId));
+      const currentWeekPlans = validPlans.filter(p => parseInt(p.numero_semana) === currentW);
+      const count = currentWeekPlans.length;
+
+      if (count < 4) {
+        notifications.push({
+          id: 'notif_cuota_semanal',
+          icon: '⚠️',
+          title: `Cuota Incompleta (Semana ${currentW})`,
+          message: `Llevas ${count}/4 planeaciones subidas esta semana. Te faltan ${4 - count} planeación(es) para cumplir la cuota.`,
+          type: 'warning',
+          read: false,
+          actionText: '📤 Subir Ahora',
+          actionUrl: 'planeaciones.html'
+        });
+      } else {
+        notifications.push({
+          id: 'notif_cuota_ok',
+          icon: '🟢',
+          title: `¡Cuota Cumplida! (Semana ${currentW})`,
+          message: `Has completado exitosamente las ${count}/4 planeaciones requeridas para la Semana ${currentW}.`,
+          type: 'success',
+          read: true
+        });
+      }
+
+      notifications.push({
+        id: 'notif_plazo_semanal',
+        icon: '💡',
+        title: 'Plazo de Entrega Ordinario',
+        message: 'Recuerda que las entregas sin retraso se cierran los lunes a las 23:59:59 de la semana correspondiente.',
+        type: 'info',
+        read: false
+      });
+
+    } else if (user.rol === 'administrador') {
+      const docentes = await API.Docentes.getAll();
+      let pendingCount = 0;
+      (docentes || []).forEach(d => {
+        const c = (plans || []).filter(p => String(p.docente_id) === String(d.id) && parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego').length;
+        if (c < 4) pendingCount++;
+      });
+
+      if (pendingCount > 0) {
+        notifications.push({
+          id: 'notif_admin_pending',
+          icon: '🔴',
+          title: `Docentes Pendientes (Semana ${currentW})`,
+          message: `Hay ${pendingCount} docentes que aún no completan la cuota de 4 planeaciones en la Semana ${currentW}.`,
+          type: 'danger',
+          read: false,
+          actionText: '📋 Ver Faltantes',
+          actionUrl: 'planeaciones.html?filter=pending'
+        });
+      }
+
+      notifications.push({
+        id: 'notif_admin_sigep',
+        icon: '📊',
+        title: 'Sistema SIGEP en Línea',
+        message: 'Monitoreo de entregas en tiempo real activo para Guaimaral, Cuatro Bocas y Altamira.',
+        type: 'info',
+        read: true
+      });
+    }
+  } catch (err) {
+    console.warn('Nota cargando notificaciones:', err.message);
+  }
+
+  return notifications;
+}
+
+function toggleNotificationPopover(notifications) {
+  const existing = document.getElementById('notifDropdownPopover');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const btnBell = document.getElementById('btnNotificationBell');
+  if (!btnBell) return;
+
+  const rect = btnBell.getBoundingClientRect();
+
+  const popover = document.createElement('div');
+  popover.id = 'notifDropdownPopover';
+  popover.className = 'notif-popover';
+  popover.style.cssText = `position:fixed; top:${rect.bottom + 8}px; right:${Math.max(10, window.innerWidth - rect.right - 10)}px; width:380px; max-width:92vw; background:var(--surface, #ffffff); color:var(--text-main, #0f172a); border:1px solid var(--border, #e2e8f0); border-radius:16px; box-shadow:0 20px 40px -10px rgba(15,23,42,0.3); z-index:999999; overflow:hidden; animation: popoverFadeIn 0.22s ease-out;`;
+
+  popover.innerHTML = `
+    <!-- Topbar Header -->
+    <div style="background:var(--bg, #f8fafc); padding:12px 16px; border-bottom:1px solid var(--border, #e2e8f0); display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:16px;">🔔</span>
+        <h4 style="margin:0; font-size:14px; font-weight:800; color:var(--primary-accent, #0284c7);">Alertas & Notificaciones</h4>
+      </div>
+      <button type="button" onclick="markAllNotificationsRead()" style="background:none; border:none; color:var(--primary-accent, #0284c7); font-size:11.5px; font-weight:700; cursor:pointer;">
+        ✓ Leídas
+      </button>
+    </div>
+
+    <!-- Notifications List -->
+    <div style="max-height:340px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;">
+      ${notifications.length > 0 ? notifications.map(n => `
+        <div style="background:${n.read ? 'var(--bg, #f8fafc)' : 'rgba(56,189,248,0.08)'}; border:1px solid ${n.read ? 'var(--border, #e2e8f0)' : 'var(--primary-accent, #38bdf8)'}; border-radius:12px; padding:10px 12px; display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:20px; flex-shrink:0;">${n.icon}</span>
+          <div style="flex:1;">
+            <div style="font-size:12.5px; font-weight:700; color:var(--text-main); margin-bottom:2px;">${n.title}</div>
+            <p style="margin:0; font-size:11.5px; color:var(--text-muted); line-height:1.4;">${n.message}</p>
+            ${n.actionText ? `
+              <a href="${n.actionUrl}" class="btn btn-sm btn-primary" style="display:inline-block; margin-top:8px; padding:3px 10px; font-size:11px; font-weight:700; border-radius:6px; text-decoration:none;">
+                ${n.actionText}
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `).join('') : '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">Sin notificaciones recientes</div>'}
+    </div>
+
+    <!-- Footer -->
+    <div style="background:var(--bg, #f8fafc); padding:8px 16px; border-top:1px solid var(--border, #e2e8f0); text-align:center; font-size:11px; color:var(--text-muted);">
+      I.E. Guaimaral · Sistema Académico SIGEP
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+
+  const outsideClick = (e) => {
+    if (!popover.contains(e.target) && !btnBell.contains(e.target)) {
+      popover.remove();
+      document.removeEventListener('click', outsideClick);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', outsideClick), 50);
+}
+
+function markAllNotificationsRead() {
+  const countEl = document.getElementById('notifBadgeCount');
+  if (countEl) countEl.style.display = 'none';
+  const popover = document.getElementById('notifDropdownPopover');
+  if (popover) popover.remove();
+  showToast('✓ Notificaciones marcadas como leídas', 'success');
 }
 
