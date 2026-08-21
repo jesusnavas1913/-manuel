@@ -44,11 +44,13 @@ async function initPlaneacionesPage() {
 
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
+let selectedAdminWeek = weekNumber(new Date());
 
 async function loadAdminDocentes() {
   try {
     adminDocentesData = await API.Docentes.getAll();
     allPlaneaciones = await API.Planeaciones.getAll();
+    populateAdminWeekSelect();
     updateAdminWeeklySummary();
     filterAdminDocentes();
   } catch (err) {
@@ -56,21 +58,47 @@ async function loadAdminDocentes() {
   }
 }
 
+function populateAdminWeekSelect() {
+  const sel = document.getElementById('selAdminWeek');
+  if (!sel) return;
+
+  const currentW = weekNumber(new Date());
+  if (!selectedAdminWeek) selectedAdminWeek = currentW;
+
+  let optionsHtml = '';
+  for (let w = Math.max(currentW + 1, 40); w >= 1; w--) {
+    const isCur = w === currentW;
+    const isSel = w === selectedAdminWeek;
+    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
+  }
+  sel.innerHTML = optionsHtml;
+}
+
+function changeAdminSelectedWeek(val) {
+  selectedAdminWeek = parseInt(val) || weekNumber(new Date());
+  updateAdminWeeklySummary();
+  filterAdminDocentes();
+}
+
 function updateAdminWeeklySummary() {
   const currentW = weekNumber(new Date());
+  const targetW = selectedAdminWeek || currentW;
+
   const currentWeekLabel = document.getElementById('adminCurrentWeekLabel');
-  if (currentWeekLabel) currentWeekLabel.textContent = `Semana ${currentW}`;
+  if (currentWeekLabel) {
+    currentWeekLabel.textContent = `Semana ${targetW}${targetW === currentW ? ' (Actual)' : ''}`;
+  }
 
   let okCount = 0;
   let pendingCount = 0;
 
   adminDocentesData.forEach(d => {
-    const hasCurrentWeekDelivery = allPlaneaciones.some(p => 
+    const hasWeekDelivery = allPlaneaciones.some(p => 
       String(p.docente_id) === String(d.id) && 
-      parseInt(p.numero_semana) === currentW && 
+      parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     );
-    if (hasCurrentWeekDelivery) okCount++;
+    if (hasWeekDelivery) okCount++;
     else pendingCount++;
   });
 
@@ -97,17 +125,17 @@ function setAdminDocenteFilter(filterType) {
 
 function filterAdminDocentes() {
   const q = (document.getElementById('searchAdminDocentes').value || '').toLowerCase().trim();
-  const currentW = weekNumber(new Date());
+  const targetW = selectedAdminWeek || weekNumber(new Date());
 
   let list = adminDocentesData.filter(d => {
-    const hasCurrentWeekDelivery = allPlaneaciones.some(p => 
+    const hasWeekDelivery = allPlaneaciones.some(p => 
       String(p.docente_id) === String(d.id) && 
-      parseInt(p.numero_semana) === currentW && 
+      parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     );
 
-    if (currentAdminDocenteFilter === 'pending' && hasCurrentWeekDelivery) return false;
-    if (currentAdminDocenteFilter === 'ok' && !hasCurrentWeekDelivery) return false;
+    if (currentAdminDocenteFilter === 'pending' && hasWeekDelivery) return false;
+    if (currentAdminDocenteFilter === 'ok' && !hasWeekDelivery) return false;
     return true;
   });
 
@@ -134,7 +162,7 @@ function renderAdminDocentes(list = adminDocentesData) {
     return;
   }
 
-  const currentW = weekNumber(new Date());
+  const targetW = selectedAdminWeek || weekNumber(new Date());
 
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
@@ -142,11 +170,11 @@ function renderAdminDocentes(list = adminDocentesData) {
     
     const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(d.id));
     const totalPlans = docPlans.length;
-    const hasCurrentWeekDelivery = docPlans.some(p => parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego');
+    const hasWeekDelivery = docPlans.some(p => parseInt(p.numero_semana) === targetW && p.estado !== 'no_entrego');
 
-    const statusSemanaHtml = hasCurrentWeekDelivery
-      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${currentW})</span>`
-      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin Entregar (Sem ${currentW})</span>`;
+    const statusSemanaHtml = hasWeekDelivery
+      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span>`
+      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin Entregar (Sem ${targetW})</span>`;
 
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
@@ -165,6 +193,11 @@ function renderAdminDocentes(list = adminDocentesData) {
           <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
             📁 Planeaciones ${totalPlans > 0 ? `(${totalPlans})` : ''}
           </button>
+          ${!hasWeekDelivery ? `
+            <button class="btn btn-light" onclick="notifyDocenteReminder('${d.id}')" style="padding: 6px 10px; font-size: 12px; margin-right: 4px; background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.3); font-weight: 700;">
+              💬 Recordatorio
+            </button>
+          ` : ''}
           <button class="btn btn-light" onclick="window.location.href='docentes.html?edit=${d.id}'" style="padding: 6px 10px; font-size: 12px; margin-right: 4px;">
             ✏️ Editar
           </button>
@@ -175,6 +208,138 @@ function renderAdminDocentes(list = adminDocentesData) {
       </tr>
     `;
   }).join('');
+}
+
+function notifyDocenteReminder(docenteId) {
+  const d = adminDocentesData.find(item => String(item.id) === String(docenteId));
+  if (!d) return;
+
+  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const msg = `Estimado(a) Docente ${d.nombre}:\nLe recordamos cordialmente que registra pendiente la entrega de su planeación didáctica correspondiente a la SEMANA ${targetW} en el sistema SIGEP (I.E. Guaimaral).\nPor favor realice la carga de su archivo PDF a la brevedad posible.\n¡Muchas gracias!`;
+
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+  const existing = document.getElementById('reminderModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'reminderModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px;';
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; padding:24px; max-width:500px; width:95%; box-shadow:0 20px 50px rgba(0,0,0,0.5); border:1px solid var(--border, #334155);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 style="margin:0; font-size:16.5px; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:8px;">
+          💬 Notificación de Recordatorio · Semana ${targetW}
+        </h3>
+        <button type="button" onclick="document.getElementById('reminderModal').remove()" style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text-muted);">&times;</button>
+      </div>
+
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Docente: <strong>${d.nombre}</strong> (Sede: ${d.sede_nombre || 'I.E. Guaimaral'})</p>
+
+      <div style="background:var(--bg, #0f172a); border:1px solid var(--border, #334155); border-radius:10px; padding:14px; margin-bottom:20px;">
+        <label style="font-size:11.5px; font-weight:700; color:var(--primary-accent); display:block; margin-bottom:6px;">Mensaje de Recordatorio Generado:</label>
+        <textarea readonly style="width:100%; height:110px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12.5px; resize:none; outline:none;">${msg}</textarea>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-light" onclick="navigator.clipboard.writeText(\`${msg.replace(/`/g, '\\`')}\`); showToast('✅ Texto copiado al portapapeles', 'success');">
+          📋 Copiar Texto
+        </button>
+        <a href="${waUrl}" target="_blank" class="btn btn-success" style="background:#25D366; border:none; color:#fff; font-weight:700; display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:12.5px;">
+          💬 Abrir en WhatsApp
+        </a>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function exportIncumplimientoExcel() {
+  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const pendingDocentes = adminDocentesData.filter(d => {
+    return !allPlaneaciones.some(p => 
+      String(p.docente_id) === String(d.id) && 
+      parseInt(p.numero_semana) === targetW && 
+      p.estado !== 'no_entrego'
+    );
+  });
+
+  if (pendingDocentes.length === 0) {
+    showToast(`✅ No hay docentes pendientes de entrega para la Semana ${targetW}`, 'success');
+    return;
+  }
+
+  const now = new Date();
+  const fechaGen = now.toLocaleString('es-CO');
+
+  const excelContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<style>
+body { font-family: Arial, sans-serif; font-size: 11pt; }
+.title-main { background-color: #091e3a; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; height: 45px; vertical-align: middle; }
+.title-sub { background-color: #dc2626; color: #ffffff; font-size: 11pt; font-weight: bold; text-align: center; height: 28px; vertical-align: middle; }
+.meta-label { font-weight: bold; background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px; }
+.meta-val { background-color: #ffffff; color: #334155; border: 1px solid #cbd5e1; padding: 6px; }
+th { background-color: #091e3a; color: #ffffff; font-weight: bold; font-size: 10.5pt; border: 1px solid #091e3a; text-align: center; height: 35px; vertical-align: middle; }
+td { border: 1px solid #cbd5e1; font-size: 10pt; vertical-align: middle; padding: 6px 10px; }
+tr:nth-child(even) td { background-color: #f8fafc; }
+.badge-no { background-color: #fee2e2; color: #991b1b; font-weight: bold; text-align: center; }
+</style>
+</head>
+<body>
+<table>
+<tr><td colspan="7" class="title-main">INSTITUCIÓN EDUCATIVA GUAIMARAL</td></tr>
+<tr><td colspan="7" class="title-sub">INFORME DE DOCENTES PENDIENTES DE ENTREGA DE PLANEACIÓN · SEMANA ${targetW}</td></tr>
+<tr><td colspan="7" style="height: 10px; border:none;"></td></tr>
+
+<tr>
+  <td class="meta-label">Fecha Generación:</td>
+  <td colspan="2" class="meta-val">${fechaGen}</td>
+  <td class="meta-label">Semana Evaluada:</td>
+  <td class="meta-val"><b>Semana ${targetW}</b></td>
+  <td class="meta-label">Total Faltantes:</td>
+  <td class="meta-val"><b style="color:#dc2626;">${pendingDocentes.length} Docentes</b></td>
+</tr>
+<tr><td colspan="7" style="height: 14px; border:none;"></td></tr>
+
+<thead>
+  <tr>
+    <th>#</th>
+    <th>Nombre del Docente</th>
+    <th>Documento</th>
+    <th>Correo Electrónico</th>
+    <th>Sede</th>
+    <th>Jornada</th>
+    <th>Estado Semana ${targetW}</th>
+  </tr>
+</thead>
+<tbody>
+  ${pendingDocentes.map((d, i) => `
+    <tr>
+      <td style="text-align:center;"><b>${i + 1}</b></td>
+      <td><b>${d.nombre || '-'}</b></td>
+      <td style="text-align:center;">${d.documento || '-'}</td>
+      <td>${d.correo || '-'}</td>
+      <td>${d.sede_nombre || 'I.E. Guaimaral'}</td>
+      <td>${d.jornada_nombre || 'Mañana'}</td>
+      <td class="badge-no">🔴 Sin Entregar</td>
+    </tr>
+  `).join('')}
+</tbody>
+</table>
+</body>
+</html>
+  `;
+
+  const blob = new Blob(['\ufeff' + excelContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `docentes_pendientes_semana_${targetW}_${new Date().toISOString().slice(0, 10)}.xls`;
+  link.click();
+  showToast(`✅ Informe de ${pendingDocentes.length} docentes faltantes descargado en Excel (.xls)`, 'success');
 }
 
 async function deleteDocenteFromAdminTable(id) {
