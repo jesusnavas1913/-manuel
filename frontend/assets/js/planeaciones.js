@@ -151,16 +151,16 @@ function updateAdminWeeklySummary() {
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
-    const hasWeekDelivery = deliveredCount >= 2;
+    const hasWeekDelivery = deliveredCount >= 4;
     if (hasWeekDelivery) okCount++;
     else pendingCount++;
   });
 
   const statOk = document.getElementById('statDocentesOk');
-  if (statOk) statOk.textContent = `🟢 Entregaron (≥2): ${okCount}`;
+  if (statOk) statOk.textContent = `🟢 Entregaron (≥4): ${okCount}`;
 
   const statPending = document.getElementById('statDocentesPending');
-  if (statPending) statPending.textContent = `🔴 Sin Entregar (<2): ${pendingCount}`;
+  if (statPending) statPending.textContent = `🔴 Sin Entregar (<4): ${pendingCount}`;
 }
 
 function setAdminDocenteFilter(filterType) {
@@ -187,7 +187,7 @@ function filterAdminDocentes() {
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
-    const hasWeekDelivery = deliveredCount >= 2;
+    const hasWeekDelivery = deliveredCount >= 4;
 
     if (currentAdminDocenteFilter === 'pending' && hasWeekDelivery) return false;
     if (currentAdminDocenteFilter === 'ok' && !hasWeekDelivery) return false;
@@ -209,7 +209,7 @@ function filterAdminDocentes() {
 }
 
 function getDocenteComplianceStats(docenteId, targetWeek) {
-  const MIN_REQUERIDO = 2;
+  const MIN_REQUERIDO = 4;
   const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
   const validPlans = docPlans.filter(p => p.estado !== 'no_entrego');
   const totalSubidas = validPlans.length;
@@ -270,8 +270,8 @@ function renderAdminDocentes(list = adminDocentesData) {
     const stats = getDocenteComplianceStats(d.id, targetW);
 
     const statusSemanaHtml = stats.hasTargetWeekDelivery
-      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (${stats.targetWeekCount}/2)</span><br><small style="color:var(--text-muted); font-size:11px;">Subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
-      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Incompleto (${stats.targetWeekCount}/2)</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 3).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 3 ? '...' : ''}</small>`;
+      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (${stats.targetWeekCount}/4)</span><br><small style="color:var(--text-muted); font-size:11px;">Subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
+      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Incompleto (${stats.targetWeekCount}/4)</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 3).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 3 ? '...' : ''}</small>`;
 
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
@@ -744,7 +744,7 @@ function updateAutoSemanaHelper() {
   if (w < currentW) {
     statusBadge = `<span style="background:rgba(217,119,6,0.18); color:#d97706; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟡 Entrega Atrasada (Se registrará Con Retraso)</span>`;
   } else if (w === currentW) {
-    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Mínimo 2 planeaciones requeridas)</span>`;
+    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Mínimo 4 planeaciones requeridas)</span>`;
   } else {
     if (user && user.rol === 'docente') {
       statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones adelantadas (Solo Semana ${currentW} o anteriores)</span>`;
@@ -882,7 +882,7 @@ function renderDocenteAlertBanner(plans) {
 
   const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego');
   const currentWeekPlansCount = validPlans.filter(p => parseInt(p.numero_semana) === currentW).length;
-  const hasSubmittedCurrentWeek = currentWeekPlansCount >= 2;
+  const hasSubmittedCurrentWeek = currentWeekPlansCount >= 4;
 
   const noEntregoWeeks = (plans || [])
     .filter(p => p.estado === 'no_entrego' && parseInt(p.numero_semana) >= MIN_SEMANA_LECTIVA)
@@ -909,8 +909,8 @@ function renderDocenteAlertBanner(plans) {
               Atención: Tienes planeaciones pendientes por entregar
             </h4>
             <p style="margin: 2px 0 0; font-size: 13px; color: var(--text-muted);">
-              Semanas incompletas (Mínimo 2 planeaciones requeridas por semana): ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
-              <br><small style="color:var(--primary-accent); font-size:11.5px; font-weight:600; display:inline-block; margin-top:3px;">📌 Nota: Debes ingresar al menos 2 planeaciones por semana. En la Semana ${currentW} llevas <strong>${currentWeekPlansCount}/2</strong> subidas.</small>
+              Semanas incompletas (Mínimo 4 planeaciones requeridas por semana): ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
+              <br><small style="color:var(--primary-accent); font-size:11.5px; font-weight:600; display:inline-block; margin-top:3px;">📌 Nota: Debes ingresar al menos 4 planeaciones por semana. En la Semana ${currentW} llevas <strong>${currentWeekPlansCount}/4</strong> subidas.</small>
             </p>
           </div>
         </div>
@@ -931,7 +931,7 @@ function renderDocenteAlertBanner(plans) {
             ¡Excelente! Estás al día con tus entregas
           </h4>
           <p style="margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted);">
-            Has cumplido con la cuota mínima para la <strong>Semana ${currentW}</strong> (${currentWeekPlansCount}/2 planeaciones). No registras faltas pendientes.
+            Has cumplido con la cuota mínima para la <strong>Semana ${currentW}</strong> (${currentWeekPlansCount}/4 planeaciones). No registras faltas pendientes.
           </p>
         </div>
       </div>

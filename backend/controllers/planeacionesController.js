@@ -108,7 +108,7 @@ async function uploadPdfToStorage(buffer, originalname) {
   return publicUrlData.publicUrl;
 }
 
-// Helper: Re-evaluar estados de la semana para un docente asegurando el mínimo de 2 planeaciones
+// Helper: Re-evaluar estados de la semana para un docente asegurando el mínimo de 4 planeaciones
 async function actualizarEstadosSemana(docenteId, numeroSemana) {
   try {
     const { data: plans } = await supabase
@@ -120,10 +120,10 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
 
     if (!plans) return;
 
-    const MIN_PLANEACIONES = 2;
+    const MIN_PLANEACIONES = 4;
     const count = plans.length;
 
-    // Si el docente tiene menos de 2 planeaciones en la semana, todas se mantienen/pasan a 'retraso'
+    // Si el docente tiene menos de 4 planeaciones en la semana, todas se mantienen/pasan a 'retraso'
     if (count < MIN_PLANEACIONES) {
       for (const p of plans) {
         if (p.estado !== 'semana_institucional' && p.estado !== 'retraso') {
@@ -131,7 +131,7 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
         }
       }
     } else {
-      // Si ya tiene 2 o más planeaciones, re-evaluar si fueron subidas a tiempo
+      // Si ya tiene 4 o más planeaciones, re-evaluar si fueron subidas a tiempo
       const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('numero_semana', numeroSemana);
       const esInst = inst && inst.length > 0;
 

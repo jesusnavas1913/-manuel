@@ -60,7 +60,7 @@ async function initDashboard() {
           parseInt(p.numero_semana) === currentW && 
           p.estado !== 'no_entrego'
         ).length;
-        const hasDelivered = count >= 2;
+        const hasDelivered = count >= 4;
         if (hasDelivered) okCount++;
         else pendingCount++;
       });
