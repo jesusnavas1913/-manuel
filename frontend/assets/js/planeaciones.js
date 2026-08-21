@@ -204,7 +204,7 @@ function renderAdminDocentes(list = adminDocentesData) {
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
         <td style="padding: 12px 10px;">
-          <strong style="font-size: 13px; color: var(--text-main, #f1f5f9);">${d.nombre}</strong><br>
+          <strong style="font-size: 13px; color: var(--text-main, #f1f5f9);"><span class="pulse-dot" style="margin-right:6px;" title="Docente Activo"></span>${d.nombre}</strong><br>
           <small style="color: var(--text-muted, #94a3b8); font-size: 11.5px;">📧 ${d.correo || 'Sin correo'}</small>
         </td>
         <td style="padding: 12px 10px;">
@@ -233,6 +233,127 @@ function renderAdminDocentes(list = adminDocentesData) {
       </tr>
     `;
   }).join('');
+}
+
+function openPreviewInformeModal() {
+  const targetW = selectedAdminWeek || weekNumber(new Date());
+  
+  const docentesWithStats = adminDocentesData.map(d => {
+    const stats = getDocenteComplianceStats(d.id, targetW);
+    return { docente: d, stats };
+  });
+
+  const pendingRows = docentesWithStats.filter(item => !item.stats.hasTargetWeekDelivery);
+  const okRows = docentesWithStats.filter(item => item.stats.hasTargetWeekDelivery);
+
+  const currentW = weekNumber(new Date());
+  const isCurrent = targetW === currentW;
+
+  const existing = document.getElementById('previewInformeModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'previewInformeModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+  const broadcastMsg = `📊 *REPORTE INSTITUCIONAL DE CUMPLIMIENTO SIGEP - SEMANA ${targetW}*\n*I.E. GUAIMARAL*\n\n• Total Docentes Registrados: ${adminDocentesData.length}\n• Docentes al Día: ${okRows.length} (🟢 ${Math.round((okRows.length/adminDocentesData.length)*100 || 0)}%)\n• Docentes Pendientes: ${pendingRows.length} (🔴 ${Math.round((pendingRows.length/adminDocentesData.length)*100 || 0)}%)\n\n📌 *DOCENTES PENDIENTES DE ENTREGA (SEMANA ${targetW}):*\n${pendingRows.map((item, idx) => `${idx + 1}. *${item.docente.nombre}* (${item.docente.sede_nombre || 'I.E. Guaimaral'}) — Faltan: ${item.stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}`).join('\n')}\n\nPor favor ponerse al día a la brevedad posible.`;
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:18px; max-width:920px; width:96%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.6); border:1px solid var(--border, #334155); overflow:hidden;">
+      
+      <!-- Topbar Header -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:16px 22px; border-bottom:1px solid var(--border, #334155); flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:26px;">📊</span>
+          <div>
+            <h3 style="margin:0; font-size:17px; font-weight:700; color:var(--primary-accent, #38bdf8); display:flex; align-items:center; gap:8px;">
+              Previsualización de Informe · Semana ${targetW} ${isCurrent ? '<span style="font-size:11px; padding:2px 8px; background:#10b981; color:#fff; border-radius:12px; font-weight:700;">SEMANA ACTUAL</span>' : ''}
+            </h3>
+            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">Vista previa del estado de entregas y reporte de incumplimiento docente.</small>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" onclick="exportIncumplimientoExcel()" class="btn btn-danger btn-sm" style="padding:6px 14px; font-size:12px; background:#dc2626; color:#fff; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
+            📥 Descargar Excel (.xls)
+          </button>
+          <button type="button" onclick="document.getElementById('previewInformeModal').remove()" style="background:none; border:none; font-size:26px; cursor:pointer; color:var(--text-muted); line-height:1; padding:0 6px;">&times;</button>
+        </div>
+      </div>
+
+      <!-- Body Content -->
+      <div style="flex:1; padding:22px; overflow-y:auto; background:var(--surface, #1e293b); display:flex; flex-direction:column; gap:20px;">
+        
+        <!-- Metric Cards Grid -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:14px;">
+          <div style="background:var(--bg, #0f172a); border:1px solid var(--border, #334155); border-radius:12px; padding:12px 16px;">
+            <small style="color:var(--text-muted); font-size:11.5px; font-weight:600;">👨‍🏫 Total Docentes Activos</small>
+            <div style="font-size:22px; font-weight:800; color:var(--text-main); margin-top:2px;">${adminDocentesData.length}</div>
+          </div>
+          <div style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 16px;">
+            <small style="color:#10b981; font-size:11.5px; font-weight:700;">🟢 Entregaron esta Semana</small>
+            <div style="font-size:22px; font-weight:800; color:#10b981; margin-top:2px;">${okRows.length} (${Math.round((okRows.length/adminDocentesData.length)*100 || 0)}%)</div>
+          </div>
+          <div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:12px; padding:12px 16px;">
+            <small style="color:#ef4444; font-size:11.5px; font-weight:700;">🔴 Faltan por Entregar</small>
+            <div style="font-size:22px; font-weight:800; color:#ef4444; margin-top:2px;">${pendingRows.length} (${Math.round((pendingRows.length/adminDocentesData.length)*100 || 0)}%)</div>
+          </div>
+        </div>
+
+        <!-- Table of Pending Teachers -->
+        <div>
+          <h4 style="margin:0 0 10px; font-size:14px; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:6px;">
+            🔴 Listado de Docentes Pendientes (Semana ${targetW})
+          </h4>
+          <div style="border:1px solid var(--border, #334155); border-radius:10px; overflow:hidden;">
+            <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+              <thead>
+                <tr style="background:var(--bg, #0f172a); text-align:left; color:var(--text-muted);">
+                  <th style="padding:10px;">Docente / Contacto</th>
+                  <th style="padding:10px;">Sede / Jornada</th>
+                  <th style="padding:10px; text-align:center;">Subidas Totales</th>
+                  <th style="padding:10px;">Semanas Pendientes</th>
+                  <th style="padding:10px; text-align:center;">% Cumplimiento</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pendingRows.length > 0 ? pendingRows.map(item => `
+                  <tr style="border-bottom:1px solid var(--border, #334155);">
+                    <td style="padding:10px;">
+                      <strong><span class="pulse-dot" style="margin-right:6px;"></span>${item.docente.nombre}</strong><br>
+                      <small style="color:var(--text-muted);">${item.docente.correo || 'Sin correo'}</small>
+                    </td>
+                    <td style="padding:10px;">
+                      ${item.docente.sede_nombre || 'I.E. Guaimaral'}<br>
+                      <small style="color:var(--text-muted);">${item.docente.jornada_nombre || 'Mañana'}</small>
+                    </td>
+                    <td style="padding:10px; text-align:center;"><b>${item.stats.totalSubidas}</b></td>
+                    <td style="padding:10px; color:#ef4444; font-weight:700;">
+                      ${item.stats.missingWeeks.map(w => `<span style="background:rgba(239,68,68,0.15); padding:2px 6px; border-radius:6px; margin-right:3px; display:inline-block;">Sem ${w}</span>`).join('')}
+                    </td>
+                    <td style="padding:10px; text-align:center;"><b>${item.stats.pctCumplimiento}%</b></td>
+                  </tr>
+                `).join('') : `<tr><td colspan="5" style="text-align:center; padding:20px; color:#10b981; font-weight:700;">🎉 ¡Excelente! No hay docentes pendientes en la Semana ${targetW}.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Broadcast Message Textarea -->
+        <div style="background:var(--bg, #0f172a); border:1px solid var(--border, #334155); border-radius:12px; padding:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label style="font-size:12px; font-weight:700; color:var(--primary-accent);">📋 Plantilla de Comunicado Institucional para Copiar o Difusión:</label>
+            <button type="button" class="btn btn-light btn-sm" onclick="navigator.clipboard.writeText(\`${broadcastMsg.replace(/`/g, '\\`')}\`); showToast('✅ Comunicado copiado al portapapeles', 'success');" style="padding:3px 10px; font-size:11px;">
+              📋 Copiar Comunicado
+            </button>
+          </div>
+          <textarea readonly style="width:100%; height:120px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12px; resize:none; outline:none;">${broadcastMsg}</textarea>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
 }
 
 function notifyDocenteReminder(docenteId) {
