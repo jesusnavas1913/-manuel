@@ -116,6 +116,32 @@
             </div>
           </div>
 
+          <!-- Sección de Gráficos Dinámicos e Indicadores por Sede y Jornada -->
+          <div class="card c12" id="sedesMetricsCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+              <div>
+                <h2 style="font-size: 17px; margin: 0; color: var(--primary-accent, #0284c7); display: flex; align-items: center; gap: 8px;">
+                  🏛️ Cumplimiento e Indicadores por Sedes Institucionales y Jornadas
+                </h2>
+                <small style="color: var(--text-muted); font-size: 12px;">Desglose en tiempo real entre I.E. Guaimaral, Sede Cuatro Bocas, Sede Altamira y Jornadas.</small>
+              </div>
+              <div style="display: flex; background: var(--bg, #f1f5f9); border: 1px solid var(--border); border-radius: 8px; padding: 3px;">
+                <button type="button" id="btnChartTabSedes" onclick="switchSedesChartView('sedes')" class="btn btn-sm btn-primary" style="padding: 5px 14px; font-size: 12px; border-radius: 6px; font-weight: 700;">🏛️ Ver por Sedes</button>
+                <button type="button" id="btnChartTabJornadas" onclick="switchSedesChartView('jornadas')" class="btn btn-sm btn-light" style="padding: 5px 14px; font-size: 12px; border-radius: 6px; font-weight: 700;">🕒 Ver por Jornadas</button>
+              </div>
+            </div>
+
+            <!-- Vista por Sedes -->
+            <div id="chartSedesContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+              <div style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando estadísticas de sedes...</div>
+            </div>
+
+            <!-- Vista por Jornadas -->
+            <div id="chartJornadasContainer" style="display: none; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+              <div style="text-align: center; padding: 20px; color: var(--text-muted);">Cargando estadísticas de jornadas...</div>
+            </div>
+          </div>
+
           <!-- Latest Deliveries -->
           <div class="card c8">
             <h2>Últimas Entregas</h2>
