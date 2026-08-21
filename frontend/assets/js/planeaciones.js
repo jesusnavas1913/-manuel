@@ -2,11 +2,7 @@ let docentesList = [];
 
 async function initPlaneacionesPage() {
   startLiveClock();
-  const today = new Date();
-  if (document.getElementById('fechaAplicacion')) {
-    document.getElementById('fechaAplicacion').value = today.toISOString().split('T')[0];
-    updateAutoSemanaHelper();
-  }
+  populateDocenteWeekSelect();
 
   const user = Storage.getUser();
   const formCard = document.getElementById('formCard');
@@ -43,6 +39,60 @@ async function initPlaneacionesPage() {
 }
 
 const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema SIGEP inició en la Semana 32
+
+function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
+  const mondayWeek1 = new Date(jan4);
+  mondayWeek1.setDate(jan4.getDate() - (day - 1));
+
+  const mondayTarget = new Date(mondayWeek1);
+  mondayTarget.setDate(mondayWeek1.getDate() + (w - 1) * 7);
+  return mondayTarget;
+}
+
+function populateDocenteWeekSelect() {
+  const sel = document.getElementById('selSemanaDocente');
+  if (!sel) return;
+
+  const currentW = weekNumber(new Date());
+
+  let optionsHtml = '';
+  for (let w = currentW; w >= MIN_SEMANA_LECTIVA; w--) {
+    const isCur = w === currentW;
+    const label = isCur ? `Semana ${w} (Semana Actual - En Curso)` : `Semana ${w} (Semana Anterior)`;
+    optionsHtml += `<option value="${w}" ${isCur ? 'selected' : ''}>${label}</option>`;
+  }
+
+  sel.innerHTML = optionsHtml;
+
+  const mondayCurrent = getMondayOfISOWeek(currentW);
+  const dateInput = document.getElementById('fechaAplicacion');
+  if (dateInput) {
+    dateInput.value = mondayCurrent.toISOString().split('T')[0];
+
+    const user = Storage.getUser();
+    if (user && user.rol === 'docente') {
+      const sundayCurrent = new Date(mondayCurrent);
+      sundayCurrent.setDate(mondayCurrent.getDate() + 6);
+      dateInput.max = sundayCurrent.toISOString().split('T')[0];
+    }
+    updateAutoSemanaHelper();
+  }
+}
+
+function onSemanaDocenteChange(val) {
+  const w = parseInt(val);
+  if (!w) return;
+
+  const monday = getMondayOfISOWeek(w);
+  const dateStr = monday.toISOString().split('T')[0];
+  const dateInput = document.getElementById('fechaAplicacion');
+  if (dateInput) {
+    dateInput.value = dateStr;
+    updateAutoSemanaHelper();
+  }
+}
 
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
@@ -96,20 +146,21 @@ function updateAdminWeeklySummary() {
   let pendingCount = 0;
 
   adminDocentesData.forEach(d => {
-    const hasWeekDelivery = allPlaneaciones.some(p => 
+    const deliveredCount = allPlaneaciones.filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
-    );
+    ).length;
+    const hasWeekDelivery = deliveredCount >= 2;
     if (hasWeekDelivery) okCount++;
     else pendingCount++;
   });
 
   const statOk = document.getElementById('statDocentesOk');
-  if (statOk) statOk.textContent = `🟢 Entregaron: ${okCount}`;
+  if (statOk) statOk.textContent = `🟢 Entregaron (≥2): ${okCount}`;
 
   const statPending = document.getElementById('statDocentesPending');
-  if (statPending) statPending.textContent = `🔴 Sin Entregar: ${pendingCount}`;
+  if (statPending) statPending.textContent = `🔴 Sin Entregar (<2): ${pendingCount}`;
 }
 
 function setAdminDocenteFilter(filterType) {
@@ -131,11 +182,12 @@ function filterAdminDocentes() {
   const targetW = selectedAdminWeek || weekNumber(new Date());
 
   let list = adminDocentesData.filter(d => {
-    const hasWeekDelivery = allPlaneaciones.some(p => 
+    const deliveredCount = allPlaneaciones.filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
-    );
+    ).length;
+    const hasWeekDelivery = deliveredCount >= 2;
 
     if (currentAdminDocenteFilter === 'pending' && hasWeekDelivery) return false;
     if (currentAdminDocenteFilter === 'ok' && !hasWeekDelivery) return false;
@@ -157,31 +209,41 @@ function filterAdminDocentes() {
 }
 
 function getDocenteComplianceStats(docenteId, targetWeek) {
+  const MIN_REQUERIDO = 2;
   const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
   const validPlans = docPlans.filter(p => p.estado !== 'no_entrego');
   const totalSubidas = validPlans.length;
 
-  const deliveredWeeksSet = new Set(validPlans.map(p => parseInt(p.numero_semana)).filter(Boolean));
-  const deliveredWeeks = Array.from(deliveredWeeksSet).sort((a, b) => a - b);
+  const weekCounts = {};
+  validPlans.forEach(p => {
+    const w = parseInt(p.numero_semana);
+    if (w) weekCounts[w] = (weekCounts[w] || 0) + 1;
+  });
 
-  // Mínimo entre MIN_SEMANA_LECTIVA (32) y la primera semana entregada si subió antes
+  const deliveredWeeks = Object.keys(weekCounts)
+    .map(Number)
+    .filter(w => weekCounts[w] >= MIN_REQUERIDO)
+    .sort((a, b) => a - b);
+
   const firstDelivered = deliveredWeeks.length > 0 ? Math.min(...deliveredWeeks) : MIN_SEMANA_LECTIVA;
   const startW = Math.min(MIN_SEMANA_LECTIVA, firstDelivered);
 
   const missingWeeks = [];
   for (let w = startW; w <= targetWeek; w++) {
-    if (!deliveredWeeksSet.has(w)) {
+    if ((weekCounts[w] || 0) < MIN_REQUERIDO) {
       missingWeeks.push(w);
     }
   }
 
   const evaluatedCount = Math.max(1, targetWeek - startW + 1);
   const deliveredInRange = deliveredWeeks.filter(w => w >= startW && w <= targetWeek).length;
-  const hasTargetWeekDelivery = deliveredWeeksSet.has(targetWeek);
+  const targetWeekCount = weekCounts[targetWeek] || 0;
+  const hasTargetWeekDelivery = targetWeekCount >= MIN_REQUERIDO;
   const pctCumplimiento = Math.round((deliveredInRange / evaluatedCount) * 100);
 
   return {
     totalSubidas,
+    targetWeekCount,
     deliveredWeeks,
     missingWeeks,
     hasTargetWeekDelivery,
@@ -208,8 +270,8 @@ function renderAdminDocentes(list = adminDocentesData) {
     const stats = getDocenteComplianceStats(d.id, targetW);
 
     const statusSemanaHtml = stats.hasTargetWeekDelivery
-      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span><br><small style="color:var(--text-muted); font-size:11px;">Subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
-      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin Entregar (Sem ${targetW})</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 3).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 3 ? '...' : ''}</small>`;
+      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (${stats.targetWeekCount}/2)</span><br><small style="color:var(--text-muted); font-size:11px;">Subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
+      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Incompleto (${stats.targetWeekCount}/2)</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 3).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 3 ? '...' : ''}</small>`;
 
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
@@ -676,14 +738,19 @@ function updateAutoSemanaHelper() {
   const dateObj = new Date(val);
   const w = weekNumber(dateObj);
   const currentW = weekNumber(new Date());
+  const user = Storage.getUser();
 
   let statusBadge = '';
   if (w < currentW) {
     statusBadge = `<span style="background:rgba(217,119,6,0.18); color:#d97706; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟡 Entrega Atrasada (Se registrará Con Retraso)</span>`;
   } else if (w === currentW) {
-    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual</span>`;
+    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Mínimo 2 planeaciones requeridas)</span>`;
   } else {
-    statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Adelantada</span>`;
+    if (user && user.rol === 'docente') {
+      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones adelantadas (Solo Semana ${currentW} o anteriores)</span>`;
+    } else {
+      statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Adelantada (Modo Admin)</span>`;
+    }
   }
 
   if (helper) {
@@ -814,7 +881,8 @@ function renderDocenteAlertBanner(plans) {
   const currentW = weekNumber(new Date());
 
   const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego');
-  const hasSubmittedCurrentWeek = validPlans.some(p => parseInt(p.numero_semana) === currentW);
+  const currentWeekPlansCount = validPlans.filter(p => parseInt(p.numero_semana) === currentW).length;
+  const hasSubmittedCurrentWeek = currentWeekPlansCount >= 2;
 
   const noEntregoWeeks = (plans || [])
     .filter(p => p.estado === 'no_entrego' && parseInt(p.numero_semana) >= MIN_SEMANA_LECTIVA)
@@ -841,8 +909,8 @@ function renderDocenteAlertBanner(plans) {
               Atención: Tienes planeaciones pendientes por entregar
             </h4>
             <p style="margin: 2px 0 0; font-size: 13px; color: var(--text-muted);">
-              Semanas sin entregar: ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
-              <br><small style="color:var(--primary-accent); font-size:11.5px; font-weight:600; display:inline-block; margin-top:3px;">📌 Nota: Al subir la planeación de la semana pendiente, tu estado cambiará automáticamente a 🟡 Con Retraso y corregirá la falta.</small>
+              Semanas incompletas (Mínimo 2 planeaciones requeridas por semana): ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
+              <br><small style="color:var(--primary-accent); font-size:11.5px; font-weight:600; display:inline-block; margin-top:3px;">📌 Nota: Debes ingresar al menos 2 planeaciones por semana. En la Semana ${currentW} llevas <strong>${currentWeekPlansCount}/2</strong> subidas.</small>
             </p>
           </div>
         </div>
@@ -863,7 +931,7 @@ function renderDocenteAlertBanner(plans) {
             ¡Excelente! Estás al día con tus entregas
           </h4>
           <p style="margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted);">
-            Has enviado tu planeación para la <strong>Semana ${currentW}</strong> (Semana Actual). No registras faltas pendientes.
+            Has cumplido con la cuota mínima para la <strong>Semana ${currentW}</strong> (${currentWeekPlansCount}/2 planeaciones). No registras faltas pendientes.
           </p>
         </div>
       </div>
@@ -1134,6 +1202,12 @@ async function savePlaneacion(e) {
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
   const fechaApp = new Date(fechaAppStr);
   const autoSemana = weekNumber(fechaApp);
+  const currentSemana = weekNumber(new Date());
+
+  if (user && user.rol === 'docente' && autoSemana > currentSemana) {
+    showToast(`⚠️ Por motivos de seguridad de software, los docentes no pueden ingresar planeaciones para semanas adelantadas. Únicamente se permite la semana actual (Semana ${currentSemana}) o semanas anteriores.`, 'error');
+    return;
+  }
 
   const payload = new FormData();
   payload.append('docente_id', did);

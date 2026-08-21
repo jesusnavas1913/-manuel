@@ -55,11 +55,12 @@ async function initDashboard() {
       let pendingCount = 0;
 
       (docentes || []).forEach(d => {
-        const hasDelivered = (plans || []).some(p => 
+        const count = (plans || []).filter(p => 
           String(p.docente_id) === String(d.id) && 
           parseInt(p.numero_semana) === currentW && 
           p.estado !== 'no_entrego'
-        );
+        ).length;
+        const hasDelivered = count >= 2;
         if (hasDelivered) okCount++;
         else pendingCount++;
       });

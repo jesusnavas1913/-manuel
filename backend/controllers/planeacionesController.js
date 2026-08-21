@@ -108,6 +108,45 @@ async function uploadPdfToStorage(buffer, originalname) {
   return publicUrlData.publicUrl;
 }
 
+// Helper: Re-evaluar estados de la semana para un docente asegurando el mínimo de 2 planeaciones
+async function actualizarEstadosSemana(docenteId, numeroSemana) {
+  try {
+    const { data: plans } = await supabase
+      .from('planeaciones')
+      .select('*')
+      .eq('docente_id', docenteId)
+      .eq('numero_semana', numeroSemana)
+      .neq('estado', 'no_entrego');
+
+    if (!plans) return;
+
+    const MIN_PLANEACIONES = 2;
+    const count = plans.length;
+
+    // Si el docente tiene menos de 2 planeaciones en la semana, todas se mantienen/pasan a 'retraso'
+    if (count < MIN_PLANEACIONES) {
+      for (const p of plans) {
+        if (p.estado !== 'semana_institucional' && p.estado !== 'retraso') {
+          await supabase.from('planeaciones').update({ estado: 'retraso' }).eq('id', p.id);
+        }
+      }
+    } else {
+      // Si ya tiene 2 o más planeaciones, re-evaluar si fueron subidas a tiempo
+      const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('numero_semana', numeroSemana);
+      const esInst = inst && inst.length > 0;
+
+      for (const p of plans) {
+        const nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion);
+        if (p.estado !== nuevoEstado) {
+          await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error al actualizar estados de la semana:', e.message);
+  }
+}
+
 // POST /api/planeaciones
 exports.create = async (req, res) => {
   let { docente_id, area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones } = req.body;
@@ -150,10 +189,18 @@ exports.create = async (req, res) => {
     const ahora = new Date();
     const targetDate = fecha_aplicacion ? new Date(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
-    const anioTarget = targetDate.getFullYear();
+    const semanaActual = semanaISO(ahora);
 
+    // RESTRICCIÓN DE SEGURIDAD: Los docentes no pueden subir planeaciones para semanas adelantadas/futuras
+    if (req.user.rol === 'docente' && semana > semanaActual) {
+      return res.status(400).json({ 
+        error: `Por motivos de seguridad, los docentes no pueden ingresar planeaciones para semanas adelantadas. Únicamente se permite registrar planeaciones para la semana actual (Semana ${semanaActual}) o semanas anteriores.` 
+      });
+    }
+
+    const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
-    const estado = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion);
+    const estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion);
 
     // Auto-limpiar registros previos de 'no_entrego' para este docente en la misma semana
     await supabase
@@ -173,12 +220,19 @@ exports.create = async (req, res) => {
         numero_semana: semana, 
         nombre_archivo, 
         observaciones: observaciones || '', 
-        estado
+        estado: estadoInicial
       }])
       .select('*');
       
     if (error) throw error;
-    res.status(201).json(rows[0]);
+
+    // Actualizar/re-evaluar estados de la semana considerando el mínimo de 2 planeaciones por semana
+    await actualizarEstadosSemana(did, semana);
+
+    // Re-obtener la planeación recién insertada para devolver el estado final actualizado
+    const { data: updatedRows } = await supabase.from('planeaciones').select('*').eq('id', rows[0].id);
+
+    res.status(201).json((updatedRows && updatedRows[0]) || rows[0]);
   } catch (err) {
     console.error('Error al registrar planeación:', err);
     res.status(500).json({ error: err.message || 'Error al registrar planeación' });
@@ -218,6 +272,18 @@ exports.update = async (req, res) => {
     }
     // Administrador no necesita contraseña
 
+    // Verificar restricción de semana adelantada para docentes al actualizar
+    if (req.user.rol === 'docente' && (fecha_aplicacion || numero_semana)) {
+      const targetD = fecha_aplicacion ? new Date(fecha_aplicacion) : new Date();
+      const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
+      const currentW = semanaISO(new Date());
+      if (targetW > currentW) {
+        return res.status(400).json({
+          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a semanas adelantadas. Semana actual: ${currentW}.`
+        });
+      }
+    }
+
     const payload = {};
     if (area !== undefined) payload.area = area;
     if (grado !== undefined) payload.grado = grado;
@@ -235,7 +301,14 @@ exports.update = async (req, res) => {
 
     if (error) throw error;
     if (!rows || rows.length === 0) return res.status(404).json({ error: 'No encontrada' });
-    res.json(rows[0]);
+
+    // Actualizar/re-evaluar estados de la semana considerando el mínimo de 2 planeaciones
+    const did = rows[0].docente_id || plan.docente_id;
+    const wNum = rows[0].numero_semana || plan.numero_semana;
+    await actualizarEstadosSemana(did, wNum);
+
+    const { data: finalRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
+    res.json((finalRows && finalRows[0]) || rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al actualizar planeación' });
@@ -251,10 +324,12 @@ exports.remove = async (req, res) => {
   const { password_confirmacion } = req.body || {};
 
   try {
+    const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
+    if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
+    const plan = planRows[0];
+
     if (req.user.rol === 'docente') {
-      const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
-      if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
-      if (planRows[0].docente_id !== req.user.docente_id) {
+      if (plan.docente_id !== req.user.docente_id) {
         return res.status(403).json({ error: 'No puede eliminar planeaciones de otros docentes.' });
       }
       if (!password_confirmacion) {
@@ -270,6 +345,10 @@ exports.remove = async (req, res) => {
     const { data, error } = await supabase.from('planeaciones').delete().eq('id', planId).select();
     if (error) { console.error(error); return res.status(500).json({ error: 'Error al eliminar' }); }
     if (!data || data.length === 0) return res.status(404).json({ error: 'No encontrada' });
+
+    // Actualizar/re-evaluar estados de la semana tras eliminar planeación
+    await actualizarEstadosSemana(plan.docente_id, plan.numero_semana);
+
     res.json({ message: 'Planeación eliminada correctamente.' });
   } catch (err) {
     console.error(err);
