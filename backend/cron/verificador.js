@@ -17,6 +17,12 @@ async function verificarNoEntregados() {
     const semana1 = new Date(fecha.getFullYear(), 0, 4);
     const semanaActual = 1 + Math.round(((fecha - semana1) / 86400000 - 3 + ((semana1.getDay() + 6) % 7)) / 7);
 
+    const MIN_SEMANA_SISTEMA = 32;
+    if (semanaActual < MIN_SEMANA_SISTEMA) {
+      console.log(`ℹ️ Cron Job: la semana actual (${semanaActual}) es anterior al inicio del sistema SIGEP (Semana ${MIN_SEMANA_SISTEMA}). Omitiendo verificación.`);
+      return;
+    }
+
     for (let docente of (docentes || [])) {
       // Revisar si el docente tiene una planeación para esta semana
       const { data: planes, error: errPlanes } = await supabase

@@ -42,6 +42,8 @@ async function initPlaneacionesPage() {
   }
 }
 
+const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema SIGEP inició en la Semana 32
+
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
 let selectedAdminWeek = weekNumber(new Date());
@@ -66,7 +68,8 @@ function populateAdminWeekSelect() {
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
-  for (let w = Math.max(currentW + 1, 40); w >= 1; w--) {
+  const maxW = Math.max(currentW, 32);
+  for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
     const isCur = w === currentW;
     const isSel = w === selectedAdminWeek;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
@@ -161,22 +164,29 @@ function getDocenteComplianceStats(docenteId, targetWeek) {
   const deliveredWeeksSet = new Set(validPlans.map(p => parseInt(p.numero_semana)).filter(Boolean));
   const deliveredWeeks = Array.from(deliveredWeeksSet).sort((a, b) => a - b);
 
+  // Mínimo entre MIN_SEMANA_LECTIVA (32) y la primera semana entregada si subió antes
+  const firstDelivered = deliveredWeeks.length > 0 ? Math.min(...deliveredWeeks) : MIN_SEMANA_LECTIVA;
+  const startW = Math.min(MIN_SEMANA_LECTIVA, firstDelivered);
+
   const missingWeeks = [];
-  for (let w = 1; w <= targetWeek; w++) {
+  for (let w = startW; w <= targetWeek; w++) {
     if (!deliveredWeeksSet.has(w)) {
       missingWeeks.push(w);
     }
   }
 
+  const evaluatedCount = Math.max(1, targetWeek - startW + 1);
+  const deliveredInRange = deliveredWeeks.filter(w => w >= startW && w <= targetWeek).length;
   const hasTargetWeekDelivery = deliveredWeeksSet.has(targetWeek);
-  const pctCumplimiento = targetWeek > 0 ? Math.round((deliveredWeeks.length / targetWeek) * 100) : 100;
+  const pctCumplimiento = Math.round((deliveredInRange / evaluatedCount) * 100);
 
   return {
     totalSubidas,
     deliveredWeeks,
     missingWeeks,
     hasTargetWeekDelivery,
-    pctCumplimiento
+    pctCumplimiento,
+    startW
   };
 }
 
@@ -804,15 +814,16 @@ function renderDocenteAlertBanner(plans) {
   const hasSubmittedCurrentWeek = validPlans.some(p => parseInt(p.numero_semana) === currentW);
 
   const noEntregoWeeks = (plans || [])
-    .filter(p => p.estado === 'no_entrego')
+    .filter(p => p.estado === 'no_entrego' && parseInt(p.numero_semana) >= MIN_SEMANA_LECTIVA)
     .map(p => parseInt(p.numero_semana))
     .filter((w, idx, self) => self.indexOf(w) === idx)
     .sort((a, b) => b - a);
 
   let pendingWeeks = [...noEntregoWeeks];
-  if (!hasSubmittedCurrentWeek && !pendingWeeks.includes(currentW)) {
+  if (currentW >= MIN_SEMANA_LECTIVA && !hasSubmittedCurrentWeek && !pendingWeeks.includes(currentW)) {
     pendingWeeks.unshift(currentW);
   }
+  pendingWeeks = pendingWeeks.filter(w => w >= MIN_SEMANA_LECTIVA);
 
   if (pendingWeeks.length > 0) {
     banner.style.display = 'block';
