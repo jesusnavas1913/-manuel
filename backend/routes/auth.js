@@ -9,5 +9,7 @@ router.post('/login', loginLimiter, c.login);
 router.get('/me', auth, c.me);
 router.post('/register', auth, c.register);
 router.put('/password', auth, c.changePassword);
+router.post('/impersonate', auth, c.impersonate);
 
 module.exports = router;
+

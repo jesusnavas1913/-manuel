@@ -17,6 +17,7 @@ function requireSession() {
     injectChangePasswordButton();
     applyRolePermissions(user);
     initThemeToggle();
+    initImpersonationBanner();
   }
 }
 
@@ -269,3 +270,66 @@ function extractDuracion(obs) {
   const match = obs.match(/\[Duración:\s*(\d+)\s*clase\(s\)\]/i);
   return match ? match[1] : null;
 }
+
+// ── Funciones de Impersonación (Entrar como Docente) ───────────
+async function loginAsDocente(docenteId, docenteNombre) {
+  if (!confirm(`¿Desea ingresar y gestionar el sistema como el docente "${docenteNombre}"?`)) return;
+
+  try {
+    const currentToken = Storage.getToken();
+    const currentUser = Storage.getUser();
+
+    const res = await API.Auth.impersonate(docenteId);
+    if (res && res.token) {
+      if (currentUser && currentUser.rol === 'administrador') {
+        localStorage.setItem('sigep_admin_token', currentToken);
+        localStorage.setItem('sigep_admin_user', JSON.stringify(currentUser));
+      }
+
+      Storage.setSession(res.token, res.user);
+      showToast(`🔑 Ingresó como docente: ${res.user.nombre}`, 'success');
+      setTimeout(() => {
+        window.location.href = 'planeaciones.html';
+      }, 500);
+    }
+  } catch (err) {
+    showToast(err.message || 'Error al ingresar a la cuenta del docente', 'error');
+  }
+}
+
+function returnToAdminSession() {
+  const adminToken = localStorage.getItem('sigep_admin_token');
+  const adminUser = localStorage.getItem('sigep_admin_user');
+
+  if (adminToken && adminUser) {
+    Storage.setSession(adminToken, JSON.parse(adminUser));
+    localStorage.removeItem('sigep_admin_token');
+    localStorage.removeItem('sigep_admin_user');
+    showToast('↩️ Ha regresado a su cuenta de Administrador', 'info');
+    setTimeout(() => {
+      window.location.href = 'planeaciones.html';
+    }, 500);
+  }
+}
+
+function initImpersonationBanner() {
+  const adminToken = localStorage.getItem('sigep_admin_token');
+  const user = Storage.getUser();
+
+  if (adminToken && user && !document.getElementById('impersonationBanner')) {
+    const banner = document.createElement('div');
+    banner.id = 'impersonationBanner';
+    banner.style.cssText = 'background: linear-gradient(90deg, #d97706, #b45309); color: #ffffff; padding: 10px 20px; font-size: 13.5px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 999999; box-shadow: 0 4px 12px rgba(0,0,0,0.2);';
+    banner.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 16px;">⚠️</span>
+        <span>Modo de Navegación Activo: <strong>Entraste como el docente ${user.nombre}</strong></span>
+      </div>
+      <button type="button" onclick="returnToAdminSession()" class="btn btn-sm" style="background: #ffffff; color: #b45309; border: none; font-weight: 700; padding: 6px 14px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+        ⬅️ Volver a Cuenta de Admin
+      </button>
+    `;
+    document.body.prepend(banner);
+  }
+}
+

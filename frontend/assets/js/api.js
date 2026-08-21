@@ -85,6 +85,10 @@ const API = {
     changePassword: (password_actual, password_nuevo) => apiFetch('/auth/password', {
       method: 'PUT',
       body: JSON.stringify({ password_actual, password_nuevo })
+    }),
+    impersonate: (docente_id) => apiFetch('/auth/impersonate', {
+      method: 'POST',
+      body: JSON.stringify({ docente_id })
     })
   },
   Docentes: {

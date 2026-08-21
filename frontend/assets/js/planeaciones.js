@@ -225,6 +225,9 @@ function renderAdminDocentes(list = adminDocentesData) {
         <td style="padding: 12px 10px; max-width: 200px;">${areasTags}</td>
         <td style="padding: 12px 10px; max-width: 130px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap; padding: 12px 10px;">
+          <button class="btn btn-warning" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 12px; font-weight: 700; background: #f59e0b; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-right: 4px;" title="Ingresar a la cuenta de este docente">
+            🔑 Entrar
+          </button>
           <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
             📁 Planeaciones ${stats.totalSubidas > 0 ? `(${stats.totalSubidas})` : ''}
           </button>

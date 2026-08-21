@@ -268,3 +268,81 @@ exports.changePassword = async (req, res) => {
     res.status(500).json({ error: err.message || 'Error al actualizar contraseña' });
   }
 };
+
+// POST /api/auth/impersonate - Administrador ingresa a cuenta de un docente
+exports.impersonate = async (req, res) => {
+  if (req.user.rol !== 'administrador') {
+    return res.status(403).json({ error: 'Solo el administrador puede entrar a cuentas de docentes' });
+  }
+
+  const { docente_id, correo } = req.body;
+  if (!docente_id && !correo) {
+    return res.status(400).json({ error: 'Docente ID o correo es requerido' });
+  }
+
+  try {
+    let user = null;
+
+    if (docente_id) {
+      const { data: uByDoc } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('docente_id', parseInt(docente_id))
+        .neq('rol', 'administrador');
+      if (uByDoc && uByDoc.length > 0) user = uByDoc[0];
+    }
+
+    if (!user && correo) {
+      const cleanMail = correo.trim().toLowerCase();
+      const { data: uByMail } = await supabase
+        .from('usuarios')
+        .select('*')
+        .ilike('correo', cleanMail)
+        .neq('rol', 'administrador');
+      if (uByMail && uByMail.length > 0) user = uByMail[0];
+    }
+
+    // Si el docente no tiene usuario auto-creado en la tabla usuarios todavía, crearlo desde tabla docentes
+    if (!user && docente_id) {
+      const { data: docRows } = await supabase
+        .from('docentes')
+        .select('*')
+        .eq('id', parseInt(docente_id));
+
+      const doc = docRows && docRows[0];
+      if (doc) {
+        const initialPass = doc.clave_inicial || 'admin123';
+        const hash = await bcrypt.hash(initialPass, 10);
+        const userMail = (doc.correo || `docente${doc.id}@guaimaral.edu.co`).toLowerCase().trim();
+        const { data: created } = await supabase.from('usuarios').insert([{
+          nombre: doc.nombre,
+          correo: userMail,
+          password_hash: hash,
+          rol: 'docente',
+          docente_id: doc.id,
+          activo: true
+        }]).select('*');
+        if (created && created.length > 0) user = created[0];
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'No se encontró la cuenta de usuario para este docente' });
+    }
+
+    const jwtSecret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
+    const payload = {
+      id: user.id,
+      nombre: user.nombre,
+      correo: user.correo,
+      rol: user.rol || 'docente',
+      docente_id: user.docente_id
+    };
+    const token = jwt.sign(payload, jwtSecret, { expiresIn: '8h' });
+    return res.json({ token, user: payload });
+  } catch (err) {
+    console.error('Error en impersonate:', err);
+    res.status(500).json({ error: 'Error interno al acceder a la cuenta del docente' });
+  }
+};
+

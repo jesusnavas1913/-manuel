@@ -129,6 +129,35 @@
               </div>
             </form>
           </div>
+
+          <!-- Tabla de Docentes Registrados -->
+          <div class="card c12" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+              <h2 style="margin: 0;">👨‍🏫 Docentes Registrados</h2>
+              <input type="text" id="searchDocentes" placeholder="🔍 Buscar docente..." oninput="filterDocentes()" style="max-width: 260px; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); outline: none; font-size: 13px;">
+            </div>
+            <div class="table-responsive">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12.5px;">
+                <thead>
+                  <tr>
+                    <th style="padding: 10px;">Docente / Contacto</th>
+                    <th style="padding: 10px;">Sede / Jornada</th>
+                    <th style="padding: 10px;">Áreas Asignadas</th>
+                    <th style="padding: 10px;">Grados</th>
+                    <th style="text-align: center; padding: 10px;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="docentesList">
+                  <tr>
+                    <td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">
+                      Cargando docentes...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       </main>
     </div>

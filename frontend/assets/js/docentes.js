@@ -191,6 +191,9 @@ function renderDocentes(list = docentesData) {
     return;
   }
 
+  const currentUser = Storage.getUser();
+  const isAdmin = currentUser && currentUser.rol === 'administrador';
+
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
     const gradosTags = d.grados ? d.grados.split(', ').map(g => `<span class="badge-grade">${g}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin grados</span>';
@@ -210,6 +213,9 @@ function renderDocentes(list = docentesData) {
         <td style="max-width: 200px;">${areasTags}</td>
         <td style="max-width: 150px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap;">
+          ${isAdmin ? `
+            <button class="btn btn-warning" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#f59e0b; color:#fff; font-weight:700;" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/'/g, "\\'")}')" title="Ingresar a la cuenta de este docente">🔑 Entrar</button>
+          ` : ''}
           <button class="btn btn-light" style="padding: 4px 10px; font-size: 12px; margin-right:4px;" onclick="editDocente(${d.id})">✏️ Editar</button>
           <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocente(${d.id})">🗑️ Eliminar</button>
         </td>
