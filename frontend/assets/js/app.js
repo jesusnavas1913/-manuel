@@ -219,17 +219,17 @@ function badge(status) {
   switch (status) {
     case 'a_tiempo':
     case 'Entregado a tiempo':
-      return '<span class="badge ok">Entregado a tiempo</span>';
+      return '<span class="badge ok" title="🟢 Entregado a tiempo: Subido dentro del plazo lectivo de la semana">Entregado a tiempo</span>';
     case 'retraso':
     case 'Con retraso':
-      return '<span class="badge late">Con retraso</span>';
+      return '<span class="badge late" title="🟡 Con retraso: Subido de manera extemporánea. Corrige automáticamente el registro de No Entregó">Con retraso</span>';
     case 'semana_institucional':
     case 'Semana institucional':
-      return '<span class="badge info">Semana institucional</span>';
+      return '<span class="badge info" title="🔵 Semana institucional: Receso o actividad programada">Semana institucional</span>';
     case 'no_entrego':
     case 'No entregó':
     default:
-      return '<span class="badge no">No entregó</span>';
+      return '<span class="badge no" title="🔴 No entregó: Semana transcurrida sin registro de entrega (Evaluado desde Semana 32)">No entregó</span>';
   }
 }
 

@@ -839,6 +839,7 @@ function renderDocenteAlertBanner(plans) {
             </h4>
             <p style="margin: 2px 0 0; font-size: 13px; color: var(--text-muted);">
               Semanas sin entregar: ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
+              <br><small style="color:var(--primary-accent); font-size:11.5px; font-weight:600; display:inline-block; margin-top:3px;">📌 Nota: Al subir la planeación de la semana pendiente, tu estado cambiará automáticamente a 🟡 Con Retraso y corregirá la falta.</small>
             </p>
           </div>
         </div>

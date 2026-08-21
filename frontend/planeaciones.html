@@ -56,6 +56,21 @@
         <!-- Banner de Alerta Semanal para Docentes -->
         <div id="docenteAlertBanner" style="display: none; width: 100%; margin-bottom: 16px;"></div>
 
+        <!-- Guía Rápida de Lógica Semanal (SIGEP) -->
+        <div style="background: rgba(2,132,199,0.06); border: 1px dashed var(--primary-accent, #0284c7); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; font-size: 12px; color: var(--text-main); width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <strong style="color: var(--primary-accent, #0284c7); font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
+              💡 Lógica de Cumplimiento Semanal (SIGEP):
+            </strong>
+            <div style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px;">
+              <span title="Planeación subida antes del plazo de la semana">🟢 <strong style="color:#10b981;">A Tiempo:</strong> Plazo ordinario</span>
+              <span title="Planeación subida fuera de plazo. Elimina automáticamente la falta de No Entregó">🟡 <strong style="color:#f59e0b;">Con Retraso:</strong> Extemporáneo (Corrige la falta)</span>
+              <span title="Semana transcurrida sin entrega (Evaluado desde Semana 32)">🔴 <strong style="color:#ef4444;">Sin Entregar:</strong> Pendiente de entrega</span>
+              <span title="Planeación entregada anticipadamente para semanas futuras">🔵 <strong style="color:#38bdf8;">Adelantada:</strong> Entrega previa</span>
+            </div>
+          </div>
+        </div>
+
         <div class="grid">
           
           <!-- Vista para Administrador: Listado de Docentes con botón Expediente de Planeaciones -->
