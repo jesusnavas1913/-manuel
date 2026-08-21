@@ -102,11 +102,14 @@ function switchSedesChartView(view) {
   }
 }
 
-function renderSedesAndJornadasCharts(docentes, plans, currentW) {
+function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
   const containerSedes = document.getElementById('chartSedesContainer');
   const containerJornadas = document.getElementById('chartJornadasContainer');
 
   if (!containerSedes || !containerJornadas) return;
+
+  const docentes = Array.isArray(rawDocentes) ? rawDocentes : [];
+  const plans = Array.isArray(rawPlans) ? rawPlans : [];
 
   const sedesDef = [
     { id: 1, name: 'I.E. Guaimaral (Sede Principal)', keyName: 'guaimaral', color: '#0284c7', gradient: 'linear-gradient(135deg, #0284c7, #38bdf8)' },
@@ -121,7 +124,7 @@ function renderSedesAndJornadasCharts(docentes, plans, currentW) {
   ];
 
   const isDocenteOk = (did) => {
-    const count = (plans || []).filter(p => 
+    const count = plans.filter(p => 
       String(p.docente_id) === String(did) && 
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'

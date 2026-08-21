@@ -380,11 +380,25 @@ async function generateUserNotifications(user) {
   const currentW = weekNumber(new Date());
 
   try {
-    const plans = await API.Planeaciones.getAll();
+    const plansRes = await API.Planeaciones.getAll();
+    const plans = Array.isArray(plansRes) ? plansRes : [];
 
     if (user.rol === 'docente') {
-      const myId = user.docente_id;
-      const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego' && String(p.docente_id) === String(myId));
+      let myId = user.docente_id;
+      if (!myId) {
+        try {
+          const docsRes = await API.Docentes.getAll();
+          const allDocs = Array.isArray(docsRes) ? docsRes : [];
+          const myDoc = allDocs.find(d => d.correo && d.correo.toLowerCase() === (user.correo || '').toLowerCase());
+          if (myDoc) {
+            myId = myDoc.id;
+            user.docente_id = myDoc.id;
+            Storage.setSession(Storage.getToken(), user);
+          }
+        } catch (e) {}
+      }
+
+      const validPlans = plans.filter(p => p.estado !== 'no_entrego' && String(p.docente_id) === String(myId));
       const currentWeekPlans = validPlans.filter(p => parseInt(p.numero_semana) === currentW);
       const count = currentWeekPlans.length;
 
@@ -420,10 +434,12 @@ async function generateUserNotifications(user) {
       });
 
     } else if (user.rol === 'administrador') {
-      const docentes = await API.Docentes.getAll();
+      const docsRes = await API.Docentes.getAll();
+      const docentes = Array.isArray(docsRes) ? docsRes : [];
       let pendingCount = 0;
-      (docentes || []).forEach(d => {
-        const c = (plans || []).filter(p => String(p.docente_id) === String(d.id) && parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego').length;
+
+      docentes.forEach(d => {
+        const c = plans.filter(p => String(p.docente_id) === String(d.id) && parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego').length;
         if (c < 4) pendingCount++;
       });
 
