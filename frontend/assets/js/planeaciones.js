@@ -35,32 +35,86 @@ async function initPlaneacionesPage() {
 }
 
 let adminDocentesData = [];
+let currentAdminDocenteFilter = 'all';
 
 async function loadAdminDocentes() {
   try {
     adminDocentesData = await API.Docentes.getAll();
     allPlaneaciones = await API.Planeaciones.getAll();
-    renderAdminDocentes(adminDocentesData);
+    updateAdminWeeklySummary();
+    filterAdminDocentes();
   } catch (err) {
     showToast('Error al obtener lista de docentes', 'error');
   }
 }
 
+function updateAdminWeeklySummary() {
+  const currentW = weekNumber(new Date());
+  const currentWeekLabel = document.getElementById('adminCurrentWeekLabel');
+  if (currentWeekLabel) currentWeekLabel.textContent = `Semana ${currentW}`;
+
+  let okCount = 0;
+  let pendingCount = 0;
+
+  adminDocentesData.forEach(d => {
+    const hasCurrentWeekDelivery = allPlaneaciones.some(p => 
+      String(p.docente_id) === String(d.id) && 
+      parseInt(p.numero_semana) === currentW && 
+      p.estado !== 'no_entrego'
+    );
+    if (hasCurrentWeekDelivery) okCount++;
+    else pendingCount++;
+  });
+
+  const statOk = document.getElementById('statDocentesOk');
+  if (statOk) statOk.textContent = `🟢 Entregaron: ${okCount}`;
+
+  const statPending = document.getElementById('statDocentesPending');
+  if (statPending) statPending.textContent = `🔴 Sin Entregar: ${pendingCount}`;
+}
+
+function setAdminDocenteFilter(filterType) {
+  currentAdminDocenteFilter = filterType;
+
+  const btnAll = document.getElementById('btnFilterAll');
+  const btnPending = document.getElementById('btnFilterPending');
+  const btnOk = document.getElementById('btnFilterOk');
+
+  if (btnAll) btnAll.className = filterType === 'all' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+  if (btnPending) btnPending.className = filterType === 'pending' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+  if (btnOk) btnOk.className = filterType === 'ok' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+
+  filterAdminDocentes();
+}
+
 function filterAdminDocentes() {
   const q = (document.getElementById('searchAdminDocentes').value || '').toLowerCase().trim();
-  if (!q) {
-    renderAdminDocentes(adminDocentesData);
-    return;
+  const currentW = weekNumber(new Date());
+
+  let list = adminDocentesData.filter(d => {
+    const hasCurrentWeekDelivery = allPlaneaciones.some(p => 
+      String(p.docente_id) === String(d.id) && 
+      parseInt(p.numero_semana) === currentW && 
+      p.estado !== 'no_entrego'
+    );
+
+    if (currentAdminDocenteFilter === 'pending' && hasCurrentWeekDelivery) return false;
+    if (currentAdminDocenteFilter === 'ok' && !hasCurrentWeekDelivery) return false;
+    return true;
+  });
+
+  if (q) {
+    list = list.filter(d => 
+      (d.nombre || '').toLowerCase().includes(q) ||
+      (d.correo || '').toLowerCase().includes(q) ||
+      (d.sede_nombre || '').toLowerCase().includes(q) ||
+      (d.jornada_nombre || '').toLowerCase().includes(q) ||
+      (d.areas || '').toLowerCase().includes(q) ||
+      (d.grados || '').toLowerCase().includes(q)
+    );
   }
-  const filtered = adminDocentesData.filter(d => 
-    (d.nombre || '').toLowerCase().includes(q) ||
-    (d.correo || '').toLowerCase().includes(q) ||
-    (d.sede_nombre || '').toLowerCase().includes(q) ||
-    (d.jornada_nombre || '').toLowerCase().includes(q) ||
-    (d.areas || '').toLowerCase().includes(q) ||
-    (d.grados || '').toLowerCase().includes(q)
-  );
-  renderAdminDocentes(filtered);
+
+  renderAdminDocentes(list);
 }
 
 function renderAdminDocentes(list = adminDocentesData) {
@@ -68,15 +122,23 @@ function renderAdminDocentes(list = adminDocentesData) {
   if (!tbody) return;
 
   if (!list || list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No se encontraron docentes registrados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px; color: var(--text-muted);">No se encontraron docentes con los criterios seleccionados</td></tr>`;
     return;
   }
+
+  const currentW = weekNumber(new Date());
 
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
     const gradosTags = d.grados ? d.grados.split(', ').map(g => `<span class="badge-grade" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(245,158,11,0.15); color:#f59e0b; border-radius:6px;">${g}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin grados</span>';
     
-    const totalPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(d.id)).length;
+    const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(d.id));
+    const totalPlans = docPlans.length;
+    const hasCurrentWeekDelivery = docPlans.some(p => parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego');
+
+    const statusSemanaHtml = hasCurrentWeekDelivery
+      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${currentW})</span>`
+      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin Entregar (Sem ${currentW})</span>`;
 
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
@@ -88,8 +150,9 @@ function renderAdminDocentes(list = adminDocentesData) {
           <strong>${d.sede_nombre || 'I.E. Guaimaral'}</strong><br>
           <small style="color: var(--text-muted, #94a3b8);">${d.jornada_nombre || 'Mañana'}</small>
         </td>
-        <td style="padding: 12px 10px; max-width: 240px;">${areasTags}</td>
-        <td style="padding: 12px 10px; max-width: 140px;">${gradosTags}</td>
+        <td style="padding: 12px 10px; white-space: nowrap;">${statusSemanaHtml}</td>
+        <td style="padding: 12px 10px; max-width: 200px;">${areasTags}</td>
+        <td style="padding: 12px 10px; max-width: 130px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap; padding: 12px 10px;">
           <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
             📁 Planeaciones ${totalPlans > 0 ? `(${totalPlans})` : ''}
@@ -376,9 +439,78 @@ let allPlaneaciones = [];
 async function loadPlaneaciones() {
   try {
     allPlaneaciones = await API.Planeaciones.getAll();
+    renderDocenteAlertBanner(allPlaneaciones);
     renderPlaneaciones(allPlaneaciones);
   } catch (err) {
     showToast('Error al obtener planeaciones', 'error');
+  }
+}
+
+function renderDocenteAlertBanner(plans) {
+  const banner = document.getElementById('docenteAlertBanner');
+  if (!banner) return;
+
+  const user = Storage.getUser();
+  if (user && user.rol === 'administrador') {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const currentW = weekNumber(new Date());
+
+  const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego');
+  const hasSubmittedCurrentWeek = validPlans.some(p => parseInt(p.numero_semana) === currentW);
+
+  const noEntregoWeeks = (plans || [])
+    .filter(p => p.estado === 'no_entrego')
+    .map(p => parseInt(p.numero_semana))
+    .filter((w, idx, self) => self.indexOf(w) === idx)
+    .sort((a, b) => b - a);
+
+  let pendingWeeks = [...noEntregoWeeks];
+  if (!hasSubmittedCurrentWeek && !pendingWeeks.includes(currentW)) {
+    pendingWeeks.unshift(currentW);
+  }
+
+  if (pendingWeeks.length > 0) {
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div style="background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(217,119,6,0.12)); border: 1.5px solid #ef4444; border-radius: 14px; padding: 14px 20px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 4px 15px rgba(239,68,68,0.08);">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="width: 42px; height: 42px; border-radius: 50%; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; flex-shrink: 0;">
+            ⚠️
+          </div>
+          <div>
+            <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #dc2626;">
+              Atención: Tienes planeaciones pendientes por entregar
+            </h4>
+            <p style="margin: 2px 0 0; font-size: 13px; color: var(--text-muted);">
+              Semanas sin entregar: ${pendingWeeks.map(w => `<strong style="color:#dc2626; background:rgba(220,38,38,0.15); padding:1px 8px; border-radius:6px; margin:0 2px;">Semana ${w}</strong>`).join('')}
+            </p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('fechaAplicacion').focus();" style="background: #dc2626; border: none; font-weight: 700; font-size: 12px; padding: 8px 16px; border-radius: 8px;">
+          📤 Subir Planeación Pendiente
+        </button>
+      </div>
+    `;
+  } else {
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div style="background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(5,150,105,0.08)); border: 1.5px solid #10b981; border-radius: 14px; padding: 12px 20px; color: var(--text-main); display: flex; align-items: center; gap: 14px;">
+        <div style="width: 38px; height: 38px; border-radius: 50%; background: #10b981; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; flex-shrink: 0;">
+          ✅
+        </div>
+        <div>
+          <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #059669;">
+            ¡Excelente! Estás al día con tus entregas
+          </h4>
+          <p style="margin: 2px 0 0; font-size: 12.5px; color: var(--text-muted);">
+            Has enviado tu planeación para la <strong>Semana ${currentW}</strong> (Semana Actual). No registras faltas pendientes.
+          </p>
+        </div>
+      </div>
+    `;
   }
 }
 
