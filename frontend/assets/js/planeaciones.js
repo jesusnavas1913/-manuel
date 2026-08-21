@@ -40,15 +40,31 @@ async function initPlaneacionesPage() {
 
 const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema SIGEP inició en la Semana 32
 
+function parseLocalDate(str) {
+  if (!str) return new Date();
+  if (str instanceof Date) return str;
+  if (typeof str === 'string') {
+    const clean = str.split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+  }
+  return new Date(str);
+}
+
 function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
   const jan4 = new Date(year, 0, 4);
   const day = jan4.getDay() || 7;
-  const mondayWeek1 = new Date(jan4);
-  mondayWeek1.setDate(jan4.getDate() - (day - 1));
+  const mondayWeek1 = new Date(year, 0, 4 - (day - 1));
 
   const mondayTarget = new Date(mondayWeek1);
   mondayTarget.setDate(mondayWeek1.getDate() + (w - 1) * 7);
-  return mondayTarget;
+
+  const yyyy = mondayTarget.getFullYear();
+  const mm = String(mondayTarget.getMonth() + 1).padStart(2, '0');
+  const dd = String(mondayTarget.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function populateDocenteWeekSelect() {
@@ -66,16 +82,19 @@ function populateDocenteWeekSelect() {
 
   sel.innerHTML = optionsHtml;
 
-  const mondayCurrent = getMondayOfISOWeek(currentW);
+  const mondayCurrentStr = getMondayOfISOWeek(currentW);
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
-    dateInput.value = mondayCurrent.toISOString().split('T')[0];
+    dateInput.value = mondayCurrentStr;
 
     const user = Storage.getUser();
     if (user && user.rol === 'docente') {
-      const sundayCurrent = new Date(mondayCurrent);
-      sundayCurrent.setDate(mondayCurrent.getDate() + 6);
-      dateInput.max = sundayCurrent.toISOString().split('T')[0];
+      const sundayCurrent = parseLocalDate(mondayCurrentStr);
+      sundayCurrent.setDate(sundayCurrent.getDate() + 6);
+      const sY = sundayCurrent.getFullYear();
+      const sM = String(sundayCurrent.getMonth() + 1).padStart(2, '0');
+      const sD = String(sundayCurrent.getDate()).padStart(2, '0');
+      dateInput.max = `${sY}-${sM}-${sD}`;
     }
     updateAutoSemanaHelper();
   }
@@ -85,11 +104,10 @@ function onSemanaDocenteChange(val) {
   const w = parseInt(val);
   if (!w) return;
 
-  const monday = getMondayOfISOWeek(w);
-  const dateStr = monday.toISOString().split('T')[0];
+  const mondayStr = getMondayOfISOWeek(w);
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
-    dateInput.value = dateStr;
+    dateInput.value = mondayStr;
     updateAutoSemanaHelper();
   }
 }
@@ -735,10 +753,16 @@ function updateAutoSemanaHelper() {
     if (helper) helper.innerHTML = '';
     return;
   }
-  const dateObj = new Date(val);
+  const dateObj = parseLocalDate(val);
   const w = weekNumber(dateObj);
   const currentW = weekNumber(new Date());
   const user = Storage.getUser();
+
+  // Sincronizar el selector selSemanaDocente si existe
+  const selDoc = document.getElementById('selSemanaDocente');
+  if (selDoc && selDoc.querySelector(`option[value="${w}"]`)) {
+    selDoc.value = w;
+  }
 
   let statusBadge = '';
   if (w < currentW) {
@@ -1200,7 +1224,7 @@ async function savePlaneacion(e) {
   const duracion = (document.getElementById('duracionClases') || {}).value || '1';
   const userObs = (document.getElementById('observaciones').value || '').trim();
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
-  const fechaApp = new Date(fechaAppStr);
+  const fechaApp = parseLocalDate(fechaAppStr);
   const autoSemana = weekNumber(fechaApp);
   const currentSemana = weekNumber(new Date());
 
