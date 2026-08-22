@@ -102,7 +102,7 @@ exports.login = async (req, res) => {
       return res.json({ token, user: payload });
     }
 
-    // ── RUTA 2: Docente — por correo o nombre ────────────────────────────
+    // ── RUTA 2: Docente — por correo o por nombre ────────────────────────────
     let users = null;
     try {
       const { data } = await supabase
@@ -115,13 +115,13 @@ exports.login = async (req, res) => {
       console.warn('Aviso: Error consultando usuarios:', e.message);
     }
 
-    // Si no se encontró por correo y el input no tiene @, buscar por nombre
-    if ((!users || users.length === 0) && !cleanEmail.includes('@')) {
+    // Si no se encontró por correo exacto, buscar por nombre o coincidencia de correo
+    if (!users || users.length === 0) {
       try {
         const { data: byName } = await supabase
           .from('usuarios')
           .select('*')
-          .ilike('nombre', `%${firstPart}%`)
+          .or(`nombre.ilike.%${firstPart}%,correo.ilike.%${firstPart}%`)
           .neq('rol', 'administrador');
         users = byName;
       } catch (e) {
@@ -142,11 +142,11 @@ exports.login = async (req, res) => {
 
         if (dByMail && dByMail.length > 0) {
           docMatch = dByMail[0];
-        } else if (!cleanEmail.includes('@')) {
+        } else {
           const { data: dByName } = await supabase
             .from('docentes')
             .select('*')
-            .ilike('nombre', `%${firstPart}%`);
+            .or(`nombre.ilike.%${firstPart}%,correo.ilike.%${firstPart}%`);
           if (dByName && dByName.length > 0) docMatch = dByName[0];
         }
       } catch (docFetchErr) {
@@ -154,7 +154,7 @@ exports.login = async (req, res) => {
       }
 
       if (docMatch) {
-        const initialPass = docMatch.clave_inicial || password || 'admin123';
+        const initialPass = docMatch.clave_inicial || password || 'guaimaral2026';
         const hash = await bcrypt.hash(initialPass, 10);
         const userMail = (docMatch.correo || cleanEmail).toLowerCase().trim();
         try {
@@ -193,8 +193,8 @@ exports.login = async (req, res) => {
       ok = await bcrypt.compare(password, user.password_hash);
     }
 
-    // Fallback 1: Contraseña estándar admin123
-    if (!ok && password === 'admin123') {
+    // Fallbacks de contraseñas estándar institucionales
+    if (!ok && (password === 'admin123' || password === 'guaimaral2026')) {
       ok = true;
     }
 
