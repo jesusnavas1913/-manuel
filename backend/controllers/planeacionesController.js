@@ -137,21 +137,23 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
 // POST /api/planeaciones
 exports.create = async (req, res) => {
   let { docente_id, area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones } = req.body;
-  let did = req.user.rol === 'docente' ? req.user.docente_id : docente_id;
+  let did = req.user.rol === 'docente' ? (req.user.docente_id || docente_id) : docente_id;
 
   if (req.user.rol === 'docente' && (!did || isNaN(parseInt(did)))) {
     try {
-      const { data: docRows } = await supabase
-        .from('docentes')
-        .select('id')
-        .ilike('correo', req.user.correo)
-        .limit(1);
+      const cleanMail = (req.user.correo || '').toLowerCase().trim();
+      const cleanName = (req.user.nombre || '').toLowerCase().trim();
 
+      const { data: docRows } = await supabase.from('docentes').select('id, correo, nombre');
       if (docRows && docRows.length > 0) {
-        did = docRows[0].id;
+        let match = docRows.find(d => d.correo && d.correo.toLowerCase().trim() === cleanMail);
+        if (!match && cleanName) {
+          match = docRows.find(d => d.nombre && d.nombre.toLowerCase().trim() === cleanName);
+        }
+        if (match) did = match.id;
       }
     } catch (e) {
-      console.warn('Error al vincular docente por correo:', e.message);
+      console.warn('Error al vincular docente por correo/nombre:', e.message);
     }
   }
 
@@ -161,7 +163,10 @@ exports.create = async (req, res) => {
     }
     did = parseInt(did);
   } else {
-    did = parseInt(did) || 1;
+    did = parseInt(did);
+    if (isNaN(did)) {
+      return res.status(400).json({ error: 'No se pudo verificar la identidad del docente para registrar la planeación' });
+    }
   }
 
   // Manejo de archivo con Multer & Supabase Storage

@@ -1177,13 +1177,20 @@ function viewPlanDetail(id) {
 async function savePlaneacion(e) {
   e.preventDefault();
   let user = Storage.getUser();
-  let did = user && user.rol === 'docente' ? user.docente_id : parseInt(document.getElementById('docenteId').value);
+  let did = user && user.rol === 'docente' ? user.docente_id : parseInt(document.getElementById('docenteId')?.value);
 
-  // Si el docente no tiene docente_id en la sesión activa, vincularlo automáticamente por su correo
-  if (user && user.rol === 'docente' && !did) {
+  // Si el docente no tiene docente_id en la sesión activa, vincularlo automáticamente por su correo o nombre
+  if (user && user.rol === 'docente' && (!did || isNaN(parseInt(did)))) {
     try {
       const allDocs = await API.Docentes.getAll();
-      const myDoc = allDocs.find(d => d.correo && d.correo.toLowerCase() === (user.correo || '').toLowerCase());
+      const userMail = (user.correo || '').toLowerCase().trim();
+      const userName = (user.nombre || '').toLowerCase().trim();
+
+      let myDoc = allDocs.find(d => d.correo && d.correo.toLowerCase().trim() === userMail);
+      if (!myDoc && userName) {
+        myDoc = allDocs.find(d => d.nombre && d.nombre.toLowerCase().trim() === userName);
+      }
+
       if (myDoc) {
         did = myDoc.id;
         user.docente_id = myDoc.id;

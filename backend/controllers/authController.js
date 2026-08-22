@@ -389,13 +389,21 @@ exports.impersonate = async (req, res) => {
       return res.status(404).json({ error: 'No se encontró la cuenta de usuario para este docente' });
     }
 
+    const targetDid = docente_id ? parseInt(docente_id) : (user.docente_id || null);
+    if (targetDid && user && (!user.docente_id || user.docente_id !== targetDid)) {
+      try {
+        await supabase.from('usuarios').update({ docente_id: targetDid }).eq('id', user.id);
+        user.docente_id = targetDid;
+      } catch (e) {}
+    }
+
     const jwtSecret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
     const payload = {
       id: user.id,
       nombre: user.nombre,
       correo: user.correo,
-      rol: user.rol || 'docente',
-      docente_id: user.docente_id
+      rol: 'docente',
+      docente_id: targetDid
     };
     const token = jwt.sign(payload, jwtSecret, { expiresIn: '8h' });
     return res.json({ token, user: payload });
