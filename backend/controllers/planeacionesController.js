@@ -33,9 +33,19 @@ exports.getAll = async (req, res) => {
     // Si es docente, filtrar sus planeaciones
     if (req.user.rol === 'docente') {
       let did = req.user.docente_id;
-      if (!did && req.user.correo) {
-        const { data: dRows } = await supabase.from('docentes').select('id').ilike('correo', req.user.correo.toLowerCase().trim());
-        if (dRows && dRows.length > 0) did = dRows[0].id;
+      if (!did) {
+        try {
+          const cleanMail = (req.user.correo || '').toLowerCase().trim();
+          const cleanName = (req.user.nombre || '').toLowerCase().trim();
+          const { data: docRows } = await supabase.from('docentes').select('id, correo, nombre');
+          if (docRows && docRows.length > 0) {
+            let match = docRows.find(d => d.correo && d.correo.toLowerCase().trim() === cleanMail);
+            if (!match && cleanName) {
+              match = docRows.find(d => d.nombre && d.nombre.toLowerCase().trim() === cleanName);
+            }
+            if (match) did = match.id;
+          }
+        } catch (e) {}
       }
       if (did) {
         query = query.eq('docente_id', parseInt(did));

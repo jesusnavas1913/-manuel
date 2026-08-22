@@ -1082,7 +1082,7 @@ function renderPlaneaciones(plans) {
 
     items.forEach(p => {
       const dur = extractDuracion(p.observaciones);
-      const esPropia = user && user.rol === 'docente' && user.docente_id && parseInt(user.docente_id) === parseInt(p.docente_id);
+      const esPropia = user && (user.rol === 'docente' || (user.docente_id && parseInt(user.docente_id) === parseInt(p.docente_id)));
       const pdfUrl = getPdfUrl(p);
       const cleanName = getCleanPdfFileName(p);
 
