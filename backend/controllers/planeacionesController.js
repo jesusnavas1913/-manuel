@@ -1,11 +1,32 @@
 const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
 
+// Helper: Parsear fechas de forma limpia y segura sin lanzar RangeError
+function parseDateSafe(dStr) {
+  if (!dStr) return new Date();
+  if (dStr instanceof Date) return isNaN(dStr.getTime()) ? new Date() : dStr;
+  
+  const str = String(dStr).trim();
+  // Formato YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const parts = str.split('T')[0].split('-');
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  }
+  // Formato DD/MM/YYYY o DD-MM-YYYY
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(str)) {
+    const parts = str.split(/[\/\-]/);
+    return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+  }
+
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 // Helper: calcular si es a tiempo (subido hasta el lunes 23:59:59 de la semana de inicio de clases)
 function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
   if (esSemanaInstitucional) return 'semana_institucional';
 
-  const subida = new Date(fechaSubida);
-  const aplicacion = fechaAplicacion ? new Date(fechaAplicacion) : subida;
+  const subida = parseDateSafe(fechaSubida);
+  const aplicacion = fechaAplicacion ? parseDateSafe(fechaAplicacion) : subida;
 
   const lunesClase = new Date(aplicacion);
   const day = lunesClase.getDay();
@@ -18,7 +39,7 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
 
 // Helper: calcular número de semana ISO
 function semanaISO(d) {
-  const fecha = new Date(d);
+  const fecha = parseDateSafe(d);
   fecha.setHours(0, 0, 0, 0);
   fecha.setDate(fecha.getDate() + 3 - ((fecha.getDay() + 6) % 7));
   const semana1 = new Date(fecha.getFullYear(), 0, 4);
@@ -199,7 +220,7 @@ exports.create = async (req, res) => {
 
   try {
     const ahora = new Date();
-    const targetDate = fecha_aplicacion ? new Date(fecha_aplicacion) : ahora;
+    const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
     const semanaActual = semanaISO(ahora);
 
@@ -213,6 +234,11 @@ exports.create = async (req, res) => {
     const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
     const estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion);
+
+    const yyyy = targetDate.getFullYear();
+    const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(targetDate.getDate()).padStart(2, '0');
+    const dateFormatted = `${yyyy}-${mm}-${dd}`;
 
     // Auto-limpiar registros previos de 'no_entrego' para este docente en la misma semana
     await supabase
@@ -228,7 +254,7 @@ exports.create = async (req, res) => {
         docente_id: did, 
         area: area || 'General', 
         grado: grado || 'Transición', 
-        fecha_aplicacion: targetDate.toISOString().split('T')[0], 
+        fecha_aplicacion: dateFormatted, 
         numero_semana: semana, 
         nombre_archivo, 
         observaciones: observaciones || '', 
