@@ -15,6 +15,8 @@ async function initPlaneacionesPage() {
     if (listCard) listCard.style.display = 'none';
     if (adminDocentesCard) adminDocentesCard.style.display = 'block';
 
+    await loadDocentesSelect();
+
     const urlParams = new URLSearchParams(window.location.search);
     const filterParam = urlParams.get('filter');
     if (filterParam === 'pending' || filterParam === 'ok' || filterParam === 'all') {
@@ -310,6 +312,9 @@ function renderAdminDocentes(list = adminDocentesData) {
           </button>
           <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
             📁 Planeaciones ${stats.totalSubidas > 0 ? `(${stats.totalSubidas})` : ''}
+          </button>
+          <button class="btn btn-success" onclick="openAdminUploadModal('${d.id}')" style="padding: 6px 10px; font-size: 12px; font-weight: 700; background: #10b981; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-right: 4px;" title="Subir planeación didáctica para este docente">
+            ➕ Subir
           </button>
           ${!stats.hasTargetWeekDelivery ? `
             <button class="btn btn-light" onclick="notifyDocenteReminder('${d.id}')" style="padding: 6px 10px; font-size: 12px; margin-right: 4px; background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.3); font-weight: 700;">
@@ -624,13 +629,8 @@ function openDocenteExpedienteModal(docenteId) {
   const doc = adminDocentesData.find(d => String(d.id) === String(docenteId)) || (plans.length > 0 ? { nombre: plans[0].docente_nombre, sede_nombre: plans[0].sede_nombre, jornada_nombre: plans[0].jornada_nombre } : null);
   const docName = doc ? doc.nombre : 'Docente';
 
-  if (!plans || plans.length === 0) {
-    showToast(`ℹ️ El docente "${docName}" no registra planeaciones aún`, 'info');
-    return;
-  }
-
-  const docSede = (doc && doc.sede_nombre) || plans[0].sede_nombre || 'I.E. Guaimaral';
-  const docJornada = (doc && doc.jornada_nombre) || plans[0].jornada_nombre || 'Mañana';
+  const docSede = (doc && doc.sede_nombre) || (plans.length > 0 && plans[0].sede_nombre) || 'I.E. Guaimaral';
+  const docJornada = (doc && doc.jornada_nombre) || (plans.length > 0 && plans[0].jornada_nombre) || 'Mañana';
   const docCorreo = (doc && doc.correo) || '--';
 
   const existing = document.getElementById('docenteExpedienteModal');
@@ -638,7 +638,10 @@ function openDocenteExpedienteModal(docenteId) {
 
   const modal = document.createElement('div');
   modal.id = 'docenteExpedienteModal';
+  modal.setAttribute('data-docente-id', docenteId);
   modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+  const hasPlans = plans && plans.length > 0;
 
   modal.innerHTML = `
     <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:1100px; width:96%; max-height:90vh; display:flex; flex-direction:column; box-shadow: 0 25px 60px rgba(0,0,0,0.5); border:1px solid var(--border, #334155); overflow:hidden;">
@@ -659,6 +662,9 @@ function openDocenteExpedienteModal(docenteId) {
           </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
+          <button type="button" class="btn btn-success" onclick="openAdminUploadModal('${docenteId}')" style="padding: 5px 12px; font-size: 12px; font-weight: 700; background: #10b981; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            ➕ Subir Planeación
+          </button>
           <span style="font-size:12px; padding:4px 12px; background:rgba(56,189,248,0.15); color:#38bdf8; border-radius:20px; font-weight:600;">
             📁 ${plans.length} ${plans.length === 1 ? 'Planeación' : 'Planeaciones'}
           </span>
@@ -668,65 +674,76 @@ function openDocenteExpedienteModal(docenteId) {
 
       <!-- Body Table -->
       <div style="flex:1; padding:20px; overflow-y:auto; background:var(--surface, #1e293b);">
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-          <thead>
-            <tr style="border-bottom:1.5px solid var(--border, #334155); text-align:left; color:var(--text-muted);">
-              <th style="padding:10px;">Área / Grado</th>
-              <th style="padding:10px;">Semana</th>
-              <th style="padding:10px;">Fecha Aplicación</th>
-              <th style="padding:10px;">Subida</th>
-              <th style="padding:10px;">Estado</th>
-              <th style="padding:10px; text-align:center;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(() => {
-              const currentWeek = weekNumber(new Date());
-              const grouped = groupPlansByWeek(plans);
-              let modalHtml = '';
-              grouped.forEach(({ semana, items }) => {
-                const isCurrent = semana === currentWeek;
-                modalHtml += `
-                  <tr style="background: var(--bg, rgba(56,189,248,0.08)); border-top: 2px solid var(--primary-accent, #38bdf8); border-bottom: 1px solid var(--border, #334155);">
-                    <td colspan="6" style="padding: 8px 12px; font-weight: 700; color: var(--primary-accent, #38bdf8); font-size: 13px;">
-                      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                        <span style="display: flex; align-items: center; gap: 8px;">
-                          🗓️ <strong>SEMANA ${semana}</strong>
-                          ${isCurrent ? '<span style="font-size:10px; background:#10b981; color:#fff; padding:2px 6px; border-radius:10px; font-weight:700;">SEMANA ACTUAL</span>' : ''}
-                        </span>
-                        <span style="font-size: 11px; background: rgba(56,189,248,0.15); color: var(--primary-accent, #38bdf8); padding: 2px 8px; border-radius: 10px; font-weight: 600;">
-                          📁 ${items.length} ${items.length === 1 ? 'Planeación' : 'Planeaciones'}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-                items.forEach(p => {
-                  const pdfUrl = getPdfUrl(p);
-                  const cleanName = getCleanPdfFileName(p);
+        ${!hasPlans ? `
+          <div style="text-align:center; padding: 50px 20px; color: var(--text-muted, #94a3b8);">
+            <span style="font-size: 48px; display: block; margin-bottom: 12px; opacity: 0.8;">📂</span>
+            <h4 style="margin: 0 0 8px 0; font-size: 16px; color: var(--text-main, #f1f5f9);">Este docente aún no ha registrado planeaciones didácticas</h4>
+            <p style="margin: 0 0 20px 0; font-size: 13px;">Puede registrar y adjuntar la planeación correspondiente en nombre del docente desde este botón:</p>
+            <button type="button" class="btn btn-success" onclick="openAdminUploadModal('${docenteId}')" style="padding: 10px 22px; font-size: 13.5px; font-weight: 700; background: #10b981; color: #fff; border: none; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+              ➕ Subir Primera Planeación para ${docName}
+            </button>
+          </div>
+        ` : `
+          <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="border-bottom:1.5px solid var(--border, #334155); text-align:left; color:var(--text-muted);">
+                <th style="padding:10px;">Área / Grado</th>
+                <th style="padding:10px;">Semana</th>
+                <th style="padding:10px;">Fecha Aplicación</th>
+                <th style="padding:10px;">Subida</th>
+                <th style="padding:10px;">Estado</th>
+                <th style="padding:10px; text-align:center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(() => {
+                const currentWeek = weekNumber(new Date());
+                const grouped = groupPlansByWeek(plans);
+                let modalHtml = '';
+                grouped.forEach(({ semana, items }) => {
+                  const isCurrent = semana === currentWeek;
                   modalHtml += `
-                    <tr style="border-bottom:1px solid var(--border, #334155);">
-                      <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
-                      <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
-                      <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
-                      <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
-                      <td style="padding:10px;">${badge(p.estado)}</td>
-                      <td style="padding:10px; text-align:center; white-space:nowrap;">
-                        ${pdfUrl ? `
-                          <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
-                          <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#10b981; color:#fff;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
-                        ` : ''}
-                        <button class="btn btn-light" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
-                        <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deletePlaneacion(${p.id})">🗑️ Eliminar</button>
+                    <tr style="background: var(--bg, rgba(56,189,248,0.08)); border-top: 2px solid var(--primary-accent, #38bdf8); border-bottom: 1px solid var(--border, #334155);">
+                      <td colspan="6" style="padding: 8px 12px; font-weight: 700; color: var(--primary-accent, #38bdf8); font-size: 13px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                          <span style="display: flex; align-items: center; gap: 8px;">
+                            🗓️ <strong>SEMANA ${semana}</strong>
+                            ${isCurrent ? '<span style="font-size:10px; background:#10b981; color:#fff; padding:2px 6px; border-radius:10px; font-weight:700;">SEMANA ACTUAL</span>' : ''}
+                          </span>
+                          <span style="font-size: 11px; background: rgba(56,189,248,0.15); color: var(--primary-accent, #38bdf8); padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                            📁 ${items.length} ${items.length === 1 ? 'Planeación' : 'Planeaciones'}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   `;
+                  items.forEach(p => {
+                    const pdfUrl = getPdfUrl(p);
+                    const cleanName = getCleanPdfFileName(p);
+                    modalHtml += `
+                      <tr style="border-bottom:1px solid var(--border, #334155);">
+                        <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
+                        <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
+                        <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+                        <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
+                        <td style="padding:10px;">${badge(p.estado)}</td>
+                        <td style="padding:10px; text-align:center; white-space:nowrap;">
+                          ${pdfUrl ? `
+                            <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+                            <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#10b981; color:#fff;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
+                          ` : ''}
+                          <button class="btn btn-light" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
+                          <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;" onclick="deletePlaneacion(${p.id})">🗑️ Eliminar</button>
+                        </td>
+                      </tr>
+                    `;
+                  });
                 });
-              });
-              return modalHtml;
-            })()}
-          </tbody>
-        </table>
+                return modalHtml;
+              })()}
+            </tbody>
+          </table>
+        `}
       </div>
 
     </div>
@@ -1271,18 +1288,266 @@ async function savePlaneacion(e) {
 async function deletePlaneacion(id) {
   if (!confirm('¿Está seguro de eliminar esta planeación?')) return;
   try {
+    const user = Storage.getUser();
+    if (user && user.rol === 'docente') {
+      confirmarEliminarDocente(id);
+      return;
+    }
     await API.Planeaciones.remove(id);
-    showToast('Planeación eliminada', 'success');
-    await loadPlaneaciones();
+    showToast('Planeación eliminada correctamente', 'success');
+    if (user && user.rol === 'administrador') {
+      await loadAdminDocentes();
+      const expModal = document.getElementById('docenteExpedienteModal');
+      if (expModal) {
+        const did = expModal.getAttribute('data-docente-id');
+        if (did) openDocenteExpedienteModal(did);
+      }
+    } else {
+      await loadPlaneaciones();
+    }
   } catch (err) {
     showToast(err.message || 'Error al eliminar planeación', 'error');
   }
 }
 
-// ── Modal: Reemplazar PDF del docente (con confirmación de contraseña) ──
+// ── Modal de Subida de Planeación para Administrador ──────────────────
+async function openAdminUploadModal(preselectedDocenteId = null) {
+  try {
+    if (!docentesList || docentesList.length === 0) {
+      docentesList = await API.Docentes.getAll();
+    }
+  } catch (e) {
+    console.error('Error cargando docentes:', e);
+  }
+
+  const existing = document.getElementById('adminUploadModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'adminUploadModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
+
+  const currentW = weekNumber(new Date());
+  const mondayCurrentStr = getMondayOfISOWeek(currentW);
+
+  const docOptionsHtml = (docentesList || []).map(d => {
+    const isSel = preselectedDocenteId && String(d.id) === String(preselectedDocenteId);
+    return `<option value="${d.id}" ${isSel ? 'selected' : ''}>${d.nombre} (${d.sede_nombre || 'I.E. Guaimaral'})</option>`;
+  }).join('');
+
+  let weekOptionsHtml = '';
+  for (let w = currentW + 2; w >= MIN_SEMANA_LECTIVA; w--) {
+    const isCur = w === currentW;
+    weekOptionsHtml += `<option value="${w}" ${isCur ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
+  }
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:16px; max-width:650px; width:96%; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.6); border:1px solid var(--border, #334155); overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg, #0f172a); padding:16px 22px; border-bottom:1px solid var(--border, #334155);">
+        <h3 style="margin:0; font-size:17px; font-weight:700; color:var(--primary-accent, #38bdf8); display:flex; align-items:center; gap:8px;">
+          📤 Subir Planeación Didáctica (Administrador)
+        </h3>
+        <button type="button" onclick="document.getElementById('adminUploadModal').remove()" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text-muted, #94a3b8);">&times;</button>
+      </div>
+
+      <form id="adminUploadForm" onsubmit="saveAdminModalPlaneacion(event)" style="padding:22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Docente asignado *</label>
+          <select id="adminModalDocenteId" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+            <option value="">-- Seleccione un docente --</option>
+            ${docOptionsHtml}
+          </select>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Área / Asignatura *</label>
+            <select id="adminModalArea" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+              <option value="">Seleccione área...</option>
+              <option value="Matemáticas">Matemáticas</option>
+              <option value="Humanidades y Lengua Castellana">Humanidades y Lengua Castellana</option>
+              <option value="Idioma Extranjero (Inglés)">Idioma Extranjero (Inglés)</option>
+              <option value="Ciencias Naturales y Ed. Ambiental">Ciencias Naturales y Ed. Ambiental</option>
+              <option value="Física">Física</option>
+              <option value="Química">Química</option>
+              <option value="Biología">Biología</option>
+              <option value="Ciencias Sociales, Historia y Geografía">Ciencias Sociales, Historia y Geografía</option>
+              <option value="Constitución Política y Cátedra de la Paz">Constitución Política y Cátedra de la Paz</option>
+              <option value="Educación Artística y Cultural">Educación Artística y Cultural</option>
+              <option value="Educación Física, Recreación y Deportes">Educación Física, Recreación y Deportes</option>
+              <option value="Educación Ética y en Valores Humanos">Educación Ética y en Valores Humanos</option>
+              <option value="Educación Religiosa">Educación Religiosa</option>
+              <option value="Tecnología e Informática">Tecnología e Informática</option>
+              <option value="Filosofía">Filosofía</option>
+              <option value="Ciencias Económicas y Políticas">Ciencias Económicas y Políticas</option>
+              <option value="Lectura Crítica">Lectura Crítica</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Grado Académico *</label>
+            <select id="adminModalGrado" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+              <option value="">Seleccione grado...</option>
+              <option value="Prejardín">Prejardín</option>
+              <option value="Jardín">Jardín</option>
+              <option value="Transición">Transición</option>
+              <option value="1°">1° Primaria</option>
+              <option value="2°">2° Primaria</option>
+              <option value="3°">3° Primaria</option>
+              <option value="4°">4° Primaria</option>
+              <option value="5°">5° Primaria</option>
+              <option value="6°">6° Secundaria</option>
+              <option value="7°">7° Secundaria</option>
+              <option value="8°">8° Secundaria</option>
+              <option value="9°">9° Secundaria</option>
+              <option value="10°">10° Media Technical</option>
+              <option value="11°">11° Media Technical</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Semana Lectiva *</label>
+            <select id="adminModalSemana" onchange="onAdminModalSemanaChange(this.value)" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+              ${weekOptionsHtml}
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Fecha de Aplicación *</label>
+            <input type="date" id="adminModalFechaApp" required value="${mondayCurrentStr}" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+          </div>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Duración (Clases) *</label>
+          <select id="adminModalDuracion" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+            <option value="1">1 Clase</option>
+            <option value="2">2 Clases</option>
+            <option value="3">3 Clases</option>
+            <option value="4">4 Clases</option>
+            <option value="5" selected>5 Clases (Semana Completa)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Archivo PDF (Máx. 50 MB) *</label>
+          <input type="file" id="adminModalArchivo" accept=".pdf,application/pdf" required style="width:100%; padding:8px; border-radius:8px; border:1px dashed var(--primary-accent, #38bdf8); background:rgba(56,189,248,0.05); color:var(--text-main); font-size:12.5px; cursor:pointer;">
+        </div>
+
+        <div>
+          <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Observaciones (Opcional)</label>
+          <textarea id="adminModalObs" placeholder="Observaciones institucionales o notas adicionales..." style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:12.5px; height:60px;"></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+          <button type="button" class="btn btn-light" onclick="document.getElementById('adminUploadModal').remove()">Cancelar</button>
+          <button type="submit" id="btnAdminModalSubmit" class="btn btn-success" style="background:#10b981; border:none; padding:10px 20px; font-weight:700; font-size:13px; color:#fff; border-radius:8px; cursor:pointer;">
+            🚀 Registrar Planeación
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function onAdminModalSemanaChange(val) {
+  const w = parseInt(val);
+  if (!w) return;
+  const mondayStr = getMondayOfISOWeek(w);
+  const dateInput = document.getElementById('adminModalFechaApp');
+  if (dateInput) dateInput.value = mondayStr;
+}
+
+async function saveAdminModalPlaneacion(e) {
+  e.preventDefault();
+  const docenteId = document.getElementById('adminModalDocenteId').value;
+  if (!docenteId) {
+    showToast('⚠️ Por favor seleccione el docente asignado', 'error');
+    return;
+  }
+
+  const area = document.getElementById('adminModalArea').value;
+  if (!area) {
+    showToast('⚠️ Por favor seleccione el área o asignatura', 'error');
+    return;
+  }
+
+  const grado = document.getElementById('adminModalGrado').value;
+  if (!grado) {
+    showToast('⚠️ Por favor seleccione el grado académico', 'error');
+    return;
+  }
+
+  const fechaAppStr = document.getElementById('adminModalFechaApp').value;
+  if (!fechaAppStr) {
+    showToast('⚠️ Por favor seleccione la fecha de aplicación', 'error');
+    return;
+  }
+
+  const fileInput = document.getElementById('adminModalArchivo');
+  const file = fileInput ? fileInput.files[0] : null;
+
+  if (!file) {
+    showToast('⚠️ Debe seleccionar el archivo PDF de la planeación', 'error');
+    return;
+  }
+
+  const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+  if (!isPdf) {
+    showToast('⚠️ Únicamente se aceptan archivos en formato PDF (.pdf)', 'error');
+    return;
+  }
+
+  if (file.size > 50 * 1024 * 1024) {
+    showToast('⚠️ El archivo PDF supera el tamaño máximo permitido de 50 MB', 'error');
+    return;
+  }
+
+  const duracion = document.getElementById('adminModalDuracion').value || '5';
+  const userObs = (document.getElementById('adminModalObs').value || '').trim();
+  const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
+  const autoSemana = parseInt(document.getElementById('adminModalSemana').value) || weekNumber(parseLocalDate(fechaAppStr));
+
+  const payload = new FormData();
+  payload.append('docente_id', docenteId);
+  payload.append('area', area);
+  payload.append('grado', grado);
+  payload.append('fecha_aplicacion', fechaAppStr);
+  payload.append('numero_semana', autoSemana);
+  payload.append('observaciones', obsFinal);
+  payload.append('archivo', file);
+
+  const btn = document.getElementById('btnAdminModalSubmit');
+  if (btn) { btn.disabled = true; btn.innerText = 'Subiendo planeación...'; }
+
+  try {
+    await API.Planeaciones.create(payload);
+    showToast('✅ Planeación registrada exitosamente como Administrador', 'success');
+
+    const adminModal = document.getElementById('adminUploadModal');
+    if (adminModal) adminModal.remove();
+
+    await loadAdminDocentes();
+
+    const expModal = document.getElementById('docenteExpedienteModal');
+    if (expModal) {
+      openDocenteExpedienteModal(docenteId);
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerText = '🚀 Registrar Planeación'; }
+    showToast(err.message || 'Error al registrar la planeación', 'error');
+  }
+}
+
+// ── Modal: Reemplazar PDF del docente ──
 function openReemplazarModal(planId) {
   const existing = document.getElementById('reemplazarModal');
   if (existing) existing.remove();
+
+  const user = Storage.getUser();
+  const isAdmin = user && user.rol === 'administrador';
 
   const modal = document.createElement('div');
   modal.id = 'reemplazarModal';
@@ -1293,14 +1558,16 @@ function openReemplazarModal(planId) {
         <h3 style="margin:0; font-size:17px; font-weight:700; color:var(--primary-accent, #38bdf8);">📤 Reemplazar Planeación PDF</h3>
         <button onclick="document.getElementById('reemplazarModal').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted, #94a3b8);">✕</button>
       </div>
-      <p style="font-size:13px; color:var(--text-muted, #94a3b8); margin-bottom:18px;">Selecciona el nuevo archivo PDF y confirma tu contraseña para reemplazar la planeación.</p>
+      <p style="font-size:13px; color:var(--text-muted, #94a3b8); margin-bottom:18px;">
+        ${isAdmin ? 'Selecciona el nuevo archivo PDF para reemplazar la planeación existente.' : 'Selecciona el nuevo archivo PDF y confirma tu contraseña para reemplazar la planeación.'}
+      </p>
 
       <div style="margin-bottom:14px;">
         <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Nuevo archivo PDF *</label>
         <input type="file" id="reemplazarArchivo" accept=".pdf,application/pdf" style="width:100%; padding:8px; border:1px solid var(--border, #334155); border-radius:8px; background:var(--bg, #0f172a); color:inherit; font-size:13px;">
       </div>
 
-      <div style="margin-bottom:20px;">
+      <div style="margin-bottom:20px; ${isAdmin ? 'display:none;' : ''}">
         <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Contraseña *</label>
         <div style="position:relative; display:flex; align-items:center;">
           <input type="password" id="reemplazarPass" placeholder="Confirma tu contraseña" style="width:100%; padding:10px 40px 10px 14px; border:1px solid var(--border, #334155); border-radius:8px; background:var(--bg, #0f172a); color:inherit; font-size:13px;">
@@ -1318,12 +1585,14 @@ function openReemplazarModal(planId) {
 }
 
 async function ejecutarReemplazar(planId) {
+  const user = Storage.getUser();
+  const isAdmin = user && user.rol === 'administrador';
   const fileInput = document.getElementById('reemplazarArchivo');
-  const pass = (document.getElementById('reemplazarPass').value || '').trim();
+  const pass = (document.getElementById('reemplazarPass')?.value || '').trim();
   const file = fileInput && fileInput.files[0];
 
   if (!file) { showToast('⚠️ Debes seleccionar un archivo PDF', 'error'); return; }
-  if (!pass) { showToast('⚠️ Debes ingresar tu contraseña', 'error'); return; }
+  if (!isAdmin && !pass) { showToast('⚠️ Debes ingresar tu contraseña', 'error'); return; }
 
   const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
   if (!isPdf) { showToast('Solo se aceptan archivos PDF', 'error'); return; }
@@ -1332,14 +1601,10 @@ async function ejecutarReemplazar(planId) {
   if (btn) { btn.disabled = true; btn.innerText = 'Subiendo...'; }
 
   try {
-    // 1. Subir nuevo PDF reutilizando el endpoint de crear planeación
-    //    Pero necesitamos actualizar la planeación existente con el nuevo archivo
-    //    Primero subimos el archivo al storage y obtenemos la URL
     const formData = new FormData();
     formData.append('archivo', file);
-    formData.append('password_confirmacion', pass);
+    if (pass) formData.append('password_confirmacion', pass);
 
-    // Llamar al endpoint de actualización con el archivo
     const token = Storage.getToken();
     const API_BASE = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')
       ? `http://${window.location.hostname}:3001/api`
@@ -1356,7 +1621,17 @@ async function ejecutarReemplazar(planId) {
 
     document.getElementById('reemplazarModal').remove();
     showToast('✅ PDF reemplazado correctamente', 'success');
-    await loadPlaneaciones();
+
+    if (isAdmin) {
+      await loadAdminDocentes();
+      const expModal = document.getElementById('docenteExpedienteModal');
+      if (expModal) {
+        const did = expModal.getAttribute('data-docente-id');
+        if (did) openDocenteExpedienteModal(did);
+      }
+    } else {
+      await loadPlaneaciones();
+    }
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerText = '📤 Confirmar Reemplazo'; }
     showToast(err.message || 'Error al reemplazar PDF', 'error');

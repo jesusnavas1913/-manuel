@@ -213,6 +213,7 @@ function renderDocentes(list = docentesData) {
         <td style="max-width: 200px;">${areasTags}</td>
         <td style="max-width: 150px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap;">
+          <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#0284c7; color:#fff;" onclick="openCredencialModal(${d.id})">📇 Credencial</button>
           ${isAdmin ? `
             <button class="btn btn-warning" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#f59e0b; color:#fff; font-weight:700;" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/'/g, "\\'")}')" title="Ingresar a la cuenta de este docente">🔑 Entrar</button>
           ` : ''}
@@ -429,4 +430,172 @@ function resetForm() {
   document.getElementById('formTitle').textContent = 'Registrar Docente';
   document.getElementById('btnSave').textContent = 'Guardar Docente';
   document.getElementById('btnCancel').style.display = 'none';
+}
+
+function openCredencialModal(docenteId) {
+  const d = docentesData.find(x => x.id === docenteId);
+  if (!d) {
+    showToast('Docente no encontrado', 'error');
+    return;
+  }
+
+  const existing = document.getElementById('credencialModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'credencialModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.25s ease;';
+
+  const clave = d.clave_inicial || 'admin123';
+  const avatarLetter = (d.nombre || 'D').charAt(0).toUpperCase();
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #ffffff); color:var(--text-main, #0f172a); border-radius:20px; max-width:480px; width:95%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35); border:1px solid var(--border, #e2e8f0); overflow:hidden; display:flex; flex-direction:column;">
+      
+      <!-- Header Topbar -->
+      <div style="background:#0f172a; color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:14px; font-weight:700; letter-spacing:0.5px; display:flex; align-items:center; gap:8px;">
+          📇 CARNÉ & CREDENCIAL INSTITUCIONAL
+        </span>
+        <button onclick="document.getElementById('credencialModal').remove()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer; line-height:1;">&times;</button>
+      </div>
+
+      <!-- Credencial Card View -->
+      <div id="printTargetCard" style="padding:24px; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);">
+        
+        <div style="background: #ffffff; border-radius: 16px; border: 2px solid #0284c7; box-shadow: 0 10px 25px rgba(2, 132, 199, 0.15); overflow: hidden; position: relative;">
+          
+          <!-- Card Header Band -->
+          <div style="background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%); color: #ffffff; padding: 14px; text-align: center; position: relative;">
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+              <img src="assets/img/escudo.png" alt="Escudo" style="height: 38px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));" onerror="this.style.display='none'">
+              <div>
+                <h4 style="margin:0; font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase;">I.E. GUAIMARAL</h4>
+                <p style="margin:2px 0 0 0; font-size:10px; opacity:0.9; text-transform:uppercase; font-weight:600;">Carné Oficial de Docente</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card Body -->
+          <div style="padding: 20px; text-align: center;">
+            <div style="width: 72px; height: 72px; margin: 0 auto 12px auto; border-radius: 50%; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 800; box-shadow: 0 4px 12px rgba(2,132,199,0.3); border: 3px solid #fff;">
+              ${avatarLetter}
+            </div>
+
+            <h3 style="margin:0 0 4px 0; font-size:18px; font-weight:800; color:#0f172a;">${d.nombre}</h3>
+            <span style="display:inline-block; font-size:11px; font-weight:700; background:#e0f2fe; color:#0369a1; padding:3px 12px; border-radius:12px; margin-bottom:14px; text-transform:uppercase;">
+              Docente Institucional
+            </span>
+
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px; text-align:left; font-size:12px; margin-bottom:14px;">
+              <div style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+                <span style="color:#64748b; font-weight:600;">📧 Correo:</span>
+                <strong style="color:#0f172a; word-break:break-all;">${d.correo || 'Sin correo registrado'}</strong>
+              </div>
+              <div style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+                <span style="color:#64748b; font-weight:600;">🔑 Clave de Acceso:</span>
+                <strong style="color:#0284c7; font-family:monospace; font-size:13px;">${clave}</strong>
+              </div>
+              <div style="margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;">
+                <span style="color:#64748b; font-weight:600;">🏛️ Sede:</span>
+                <span style="color:#334155; font-weight:600;">${d.sede_nombre || 'I.E. Guaimaral'}</span>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="color:#64748b; font-weight:600;">☀️ Jornada:</span>
+                <span style="color:#334155; font-weight:600;">${d.jornada_nombre || 'Mañana'}</span>
+              </div>
+            </div>
+
+            ${d.areas ? `
+              <div style="text-align:left; font-size:11px; margin-bottom:10px;">
+                <strong style="color:#475569; display:block; margin-bottom:4px;">📚 Áreas Asignadas:</strong>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                  ${d.areas.split(', ').map(a => `<span style="background:#f1f5f9; color:#334155; padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1;">${a}</span>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            ${d.grados ? `
+              <div style="text-align:left; font-size:11px; margin-bottom:12px;">
+                <strong style="color:#475569; display:block; margin-bottom:4px;">🎓 Grados:</strong>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                  ${d.grados.split(', ').map(g => `<span style="background:#e0e7ff; color:#3730a3; padding:2px 8px; border-radius:6px; font-weight:600;">${g}</span>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:10px; color:#94a3b8; font-size:10px;">
+              <span>⚡ Credencial Activa & Verificada · I.E. Guaimaral</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Footer Buttons -->
+      <div style="padding:16px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center;">
+        <button type="button" class="btn btn-light" style="padding:8px 14px; font-size:12px;" onclick="copyDocenteCredencial('${d.correo}', '${clave}')">
+          📋 Copiar Credenciales
+        </button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-primary" style="padding:8px 14px; font-size:12px; background:#0284c7;" onclick="printDocenteCredencial('${(d.nombre || '').replace(/'/g, "\\'")}')">
+            🖨️ Imprimir / PDF
+          </button>
+          <button type="button" class="btn btn-danger" style="padding:8px 14px; font-size:12px;" onclick="document.getElementById('credencialModal').remove()">
+            Cerrar
+          </button>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function copyDocenteCredencial(correo, clave) {
+  const text = `Credenciales de Acceso I.E. Guaimaral:\n📧 Correo: ${correo}\n🔑 Contraseña: ${clave}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 Credenciales copiadas al portapapeles', 'success');
+    }).catch(() => {
+      showToast(`Correo: ${correo} | Clave: ${clave}`, 'info');
+    });
+  } else {
+    showToast(`Correo: ${correo} | Clave: ${clave}`, 'info');
+  }
+}
+
+function printDocenteCredencial(docenteNombre) {
+  const cardContent = document.getElementById('printTargetCard');
+  if (!cardContent) return;
+
+  const printWin = window.open('', '_blank', 'width=600,height=750');
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Credencial - ${docenteNombre || 'Docente'}</title>
+      <style>
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #ffffff; display: flex; justify-content: center; }
+        @media print {
+          body { background: #ffffff; padding: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div style="max-width: 420px; width: 100%;">
+        ${cardContent.innerHTML}
+      </div>
+      <script>
+        window.onload = function() {
+          window.print();
+          setTimeout(function() { window.close(); }, 500);
+        };
+      </script>
+    </body>
+    </html>
+  `);
+  printWin.document.close();
 }

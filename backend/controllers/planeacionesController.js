@@ -108,7 +108,7 @@ async function uploadPdfToStorage(buffer, originalname) {
   return publicUrlData.publicUrl;
 }
 
-// Helper: Re-evaluar estados de la semana para un docente asegurando el mínimo de 4 planeaciones
+// Helper: Re-evaluar estados de la semana para un docente
 async function actualizarEstadosSemana(docenteId, numeroSemana) {
   try {
     const { data: plans } = await supabase
@@ -118,28 +118,15 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
       .eq('numero_semana', numeroSemana)
       .neq('estado', 'no_entrego');
 
-    if (!plans) return;
+    if (!plans || plans.length === 0) return;
 
-    const MIN_PLANEACIONES = 4;
-    const count = plans.length;
+    const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('numero_semana', numeroSemana);
+    const esInst = inst && inst.length > 0;
 
-    // Si el docente tiene menos de 4 planeaciones en la semana, todas se mantienen/pasan a 'retraso'
-    if (count < MIN_PLANEACIONES) {
-      for (const p of plans) {
-        if (p.estado !== 'semana_institucional' && p.estado !== 'retraso') {
-          await supabase.from('planeaciones').update({ estado: 'retraso' }).eq('id', p.id);
-        }
-      }
-    } else {
-      // Si ya tiene 4 o más planeaciones, re-evaluar si fueron subidas a tiempo
-      const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('numero_semana', numeroSemana);
-      const esInst = inst && inst.length > 0;
-
-      for (const p of plans) {
-        const nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion);
-        if (p.estado !== nuevoEstado) {
-          await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
-        }
+    for (const p of plans) {
+      const nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion);
+      if (p.estado !== nuevoEstado) {
+        await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
       }
     }
   } catch (e) {
@@ -168,7 +155,14 @@ exports.create = async (req, res) => {
     }
   }
 
-  did = parseInt(did) || 1;
+  if (req.user.rol !== 'docente') {
+    if (!did || isNaN(parseInt(did))) {
+      return res.status(400).json({ error: 'Debe seleccionar el docente al que pertenece la planeación' });
+    }
+    did = parseInt(did);
+  } else {
+    did = parseInt(did) || 1;
+  }
 
   // Manejo de archivo con Multer & Supabase Storage
   if (req.file) {
@@ -226,7 +220,7 @@ exports.create = async (req, res) => {
       
     if (error) throw error;
 
-    // Actualizar/re-evaluar estados de la semana considerando el mínimo de 2 planeaciones por semana
+    // Actualizar/re-evaluar estados de la semana
     await actualizarEstadosSemana(did, semana);
 
     // Re-obtener la planeación recién insertada para devolver el estado final actualizado
@@ -357,32 +351,32 @@ exports.remove = async (req, res) => {
 };
 
 // POST /api/planeaciones/:id/reemplazar
-// Permite al docente reemplazar su PDF con verificación de contraseña
+// Permite al docente/administrador reemplazar su PDF
 exports.reemplazar = async (req, res) => {
   const bcrypt = require('bcryptjs');
   const planId = parseInt(req.params.id);
   const { password_confirmacion } = req.body;
 
   if (!req.file) return res.status(400).json({ error: 'Debe adjuntar el archivo PDF' });
-  if (!password_confirmacion) return res.status(400).json({ error: 'Debe confirmar su contraseña' });
   if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Solo se permiten archivos PDF' });
 
   try {
-    // Verificar que la planeación pertenece al docente
     const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
     if (!planRows || planRows.length === 0) return res.status(404).json({ error: 'Planeación no encontrada' });
     const plan = planRows[0];
 
-    if (req.user.rol === 'docente' && parseInt(plan.docente_id) !== parseInt(req.user.docente_id)) {
-      return res.status(403).json({ error: 'No tiene permisos para reemplazar esta planeación.' });
-    }
+    if (req.user.rol === 'docente') {
+      if (parseInt(plan.docente_id) !== parseInt(req.user.docente_id)) {
+        return res.status(403).json({ error: 'No tiene permisos para reemplazar esta planeación.' });
+      }
+      if (!password_confirmacion) return res.status(400).json({ error: 'Debe confirmar su contraseña para reemplazar el archivo.' });
 
-    // Verificar contraseña
-    const { data: userRows } = await supabase.from('usuarios').select('*').eq('id', req.user.id);
-    const userRec = userRows && userRows[0];
-    if (!userRec) return res.status(401).json({ error: 'Usuario no encontrado' });
-    const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
-    if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo reemplazar el PDF.' });
+      const { data: userRows } = await supabase.from('usuarios').select('*').eq('id', req.user.id);
+      const userRec = userRows && userRows[0];
+      if (!userRec) return res.status(401).json({ error: 'Usuario no encontrado' });
+      const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
+      if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo reemplazar el PDF.' });
+    }
 
     // Subir nuevo PDF a Supabase Storage mediante helper robusto
     const nuevaUrl = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
