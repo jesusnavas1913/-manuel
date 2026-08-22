@@ -1272,23 +1272,25 @@ async function savePlaneacion(e) {
 
   try {
     const btn = document.getElementById('btnSubmitPlan');
-    if (btn) { btn.disabled = true; btn.innerText = 'Guardando...'; }
+    if (btn) { btn.disabled = true; btn.innerText = '⏳ Guardando...'; }
 
     await API.Planeaciones.create(payload);
     showToast('✅ Planeación registrada correctamente', 'success');
     
-    document.getElementById('planForm').reset();
-    clearSelectedFile();
-    const today = new Date();
-    document.getElementById('fechaAplicacion').value = today.toISOString().split('T')[0];
-    updateAutoSemanaHelper();
+    try {
+      document.getElementById('planForm').reset();
+      clearSelectedFile();
+      const today = new Date();
+      document.getElementById('fechaAplicacion').value = today.toISOString().split('T')[0];
+      updateAutoSemanaHelper();
+    } catch (cleanErr) {}
 
-    if (btn) { btn.disabled = false; btn.innerText = '📤 Registrar y Subir Planeación'; }
     await loadPlaneaciones();
   } catch (err) {
+    showToast(err.message || 'Error al registrar planeación', 'error');
+  } finally {
     const btn = document.getElementById('btnSubmitPlan');
     if (btn) { btn.disabled = false; btn.innerText = '📤 Registrar y Subir Planeación'; }
-    showToast(err.message || 'Error al registrar planeación', 'error');
   }
 }
 
@@ -1543,8 +1545,10 @@ async function saveAdminModalPlaneacion(e) {
       openDocenteExpedienteModal(docenteId);
     }
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.innerText = '🚀 Registrar Planeación'; }
     showToast(err.message || 'Error al registrar la planeación', 'error');
+  } finally {
+    const btn = document.getElementById('btnAdminModalSubmit');
+    if (btn) { btn.disabled = false; btn.innerText = '🚀 Registrar Planeación'; }
   }
 }
 
