@@ -402,12 +402,12 @@ async function generateUserNotifications(user) {
       const currentWeekPlans = validPlans.filter(p => parseInt(p.numero_semana) === currentW);
       const count = currentWeekPlans.length;
 
-      if (count < 4) {
+      if (count === 0) {
         notifications.push({
           id: 'notif_cuota_semanal',
           icon: '⚠️',
-          title: `Cuota Incompleta (Semana ${currentW})`,
-          message: `Llevas ${count}/4 planeaciones subidas esta semana. Te faltan ${4 - count} planeación(es) para cumplir la cuota.`,
+          title: `Entrega Pendiente (Semana ${currentW})`,
+          message: `Aún no has registrado planeaciones para la Semana ${currentW}. Recuerda subir tus entregas.`,
           type: 'warning',
           read: false,
           actionText: '📤 Subir Ahora',
@@ -417,8 +417,8 @@ async function generateUserNotifications(user) {
         notifications.push({
           id: 'notif_cuota_ok',
           icon: '🟢',
-          title: `¡Cuota Cumplida! (Semana ${currentW})`,
-          message: `Has completado exitosamente las ${count}/4 planeaciones requeridas para la Semana ${currentW}.`,
+          title: `¡Entregas al Día! (Semana ${currentW})`,
+          message: `Tienes ${count} ${count === 1 ? 'planeación registrada' : 'planeaciones registradas'} para la Semana ${currentW}.`,
           type: 'success',
           read: true
         });
@@ -440,15 +440,15 @@ async function generateUserNotifications(user) {
 
       docentes.forEach(d => {
         const c = plans.filter(p => String(p.docente_id) === String(d.id) && parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego').length;
-        if (c < 4) pendingCount++;
+        if (c === 0) pendingCount++;
       });
 
       if (pendingCount > 0) {
         notifications.push({
           id: 'notif_admin_pending',
           icon: '🔴',
-          title: `Docentes Pendientes (Semana ${currentW})`,
-          message: `Hay ${pendingCount} docentes que aún no completan la cuota de 4 planeaciones en la Semana ${currentW}.`,
+          title: `Docentes Sin Entrega (Semana ${currentW})`,
+          message: `Hay ${pendingCount} docentes que aún no registran planeaciones en la Semana ${currentW}.`,
           type: 'danger',
           read: false,
           actionText: '📋 Ver Faltantes',
