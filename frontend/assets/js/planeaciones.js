@@ -44,15 +44,22 @@ const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema S
 
 function parseLocalDate(str) {
   if (!str) return new Date();
-  if (str instanceof Date) return str;
+  if (str instanceof Date) return isNaN(str.getTime()) ? new Date() : str;
   if (typeof str === 'string') {
-    const clean = str.split('T')[0];
-    const parts = clean.split('-');
-    if (parts.length === 3) {
+    const clean = str.split('T')[0].trim();
+    // YYYY-MM-DD
+    if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/.test(clean)) {
+      const parts = clean.split(/[\/\-]/);
       return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
     }
+    // DD/MM/YYYY o DD-MM-YYYY
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(clean)) {
+      const parts = clean.split(/[\/\-]/);
+      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
   }
-  return new Date(str);
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
 function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
@@ -1039,7 +1046,7 @@ function downloadPdfFile(planId, fallbackUrl, filename) {
 function groupPlansByWeek(plans) {
   const groups = {};
   for (const p of (plans || [])) {
-    const w = parseInt(p.numero_semana) || (p.fecha_aplicacion ? weekNumber(new Date(p.fecha_aplicacion)) : 1);
+    const w = parseInt(p.numero_semana) || (p.fecha_aplicacion ? weekNumber(parseLocalDate(p.fecha_aplicacion)) : 1);
     if (!groups[w]) groups[w] = [];
     groups[w].push(p);
   }
