@@ -21,20 +21,25 @@ function parseDateSafe(dStr) {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-// Helper: calcular si es a tiempo (subido hasta el lunes 23:59:59 de la semana de inicio de clases)
+// Helper: calcular si es a tiempo (subido hasta el domingo 23:59:59 antes de iniciar la semana de clases)
 function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
   if (esSemanaInstitucional) return 'semana_institucional';
 
   const subida = parseDateSafe(fechaSubida);
   const aplicacion = fechaAplicacion ? parseDateSafe(fechaAplicacion) : subida;
 
+  // Lunes en que inicia la semana de clases
   const lunesClase = new Date(aplicacion);
   const day = lunesClase.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   lunesClase.setDate(lunesClase.getDate() + diffToMonday);
-  lunesClase.setHours(23, 59, 59, 999);
 
-  return subida <= lunesClase ? 'a_tiempo' : 'retraso';
+  // Plazo límite ordinario: Domingo previo a las 23:59:59
+  const domingoLimite = new Date(lunesClase);
+  domingoLimite.setDate(domingoLimite.getDate() - 1);
+  domingoLimite.setHours(23, 59, 59, 999);
+
+  return subida <= domingoLimite ? 'a_tiempo' : 'retraso';
 }
 
 // Helper: calcular número de semana ISO

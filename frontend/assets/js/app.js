@@ -428,7 +428,7 @@ async function generateUserNotifications(user) {
         id: 'notif_plazo_semanal',
         icon: '💡',
         title: 'Plazo de Entrega Ordinario',
-        message: 'Recuerda que las entregas sin retraso se cierran los lunes a las 23:59:59 de la semana correspondiente.',
+        message: 'Recuerda que las entregas a tiempo deben realizarse a más tardar el domingo a las 23:59:59 antes de iniciar la semana de clases.',
         type: 'info',
         read: false
       });

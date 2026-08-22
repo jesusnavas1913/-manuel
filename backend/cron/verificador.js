@@ -59,10 +59,10 @@ async function verificarNoEntregados() {
   }
 }
 
-// Ejecutar todos los martes a las 00:05 (hora del servidor)
+// Ejecutar todos los lunes a las 00:05 (hora del servidor) tras vencer el plazo del domingo 23:59:59
 function iniciarCronJobs() {
-  cron.schedule('5 0 * * 2', verificarNoEntregados);
-  console.log('🕒 Cron Job programado: martes 00:05.');
+  cron.schedule('5 0 * * 1', verificarNoEntregados);
+  console.log('🕒 Cron Job programado: lunes 00:05.');
 }
 
 module.exports = {
