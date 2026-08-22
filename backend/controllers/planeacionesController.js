@@ -399,10 +399,24 @@ exports.remove = async (req, res) => {
 exports.reemplazar = async (req, res) => {
   const bcrypt = require('bcryptjs');
   const planId = parseInt(req.params.id);
-  const { password_confirmacion } = req.body;
+  const { password_confirmacion, nombre_archivo } = req.body;
 
-  if (!req.file) return res.status(400).json({ error: 'Debe adjuntar el archivo PDF' });
-  if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Solo se permiten archivos PDF' });
+  let nuevaUrl = nombre_archivo;
+
+  if (req.file) {
+    const isPdf = req.file.mimetype === 'application/pdf' || 
+                  req.file.mimetype === 'application/x-pdf' || 
+                  (req.file.originalname && req.file.originalname.toLowerCase().endsWith('.pdf'));
+    if (!isPdf) return res.status(400).json({ error: 'Solo se permiten archivos PDF' });
+
+    try {
+      nuevaUrl = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
+    } catch (upErr) {
+      return res.status(500).json({ error: upErr.message });
+    }
+  }
+
+  if (!nuevaUrl) return res.status(400).json({ error: 'Debe adjuntar el archivo PDF a reemplazar' });
 
   try {
     const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
@@ -421,9 +435,6 @@ exports.reemplazar = async (req, res) => {
       const ok = await bcrypt.compare(password_confirmacion, userRec.password_hash);
       if (!ok) return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo reemplazar el PDF.' });
     }
-
-    // Subir nuevo PDF a Supabase Storage mediante helper robusto
-    const nuevaUrl = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
 
     // Actualizar nombre_archivo en la planeación
     const { data: updated, error: updErr } = await supabase

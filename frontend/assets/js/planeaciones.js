@@ -41,6 +41,31 @@ async function initPlaneacionesPage() {
 }
 
 const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema SIGEP inició en la Semana 32
+const SUPABASE_STORAGE_BUCKET_URL = 'https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/planeaciones_pdfs';
+const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1bHJic2FveHd1aWJzbGZobGVmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTMzNDAyMSwiZXhwIjoyMTAwOTEwMDIxfQ.MsQ9sTKtvodOT_gY2z3C1UeQQJJu8YqCs9RkRKATOOc';
+
+async function uploadPdfDirectToStorage(file) {
+  const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+  const uploadUrl = `${SUPABASE_STORAGE_BUCKET_URL}/${safeName}`;
+
+  const res = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_STORAGE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_STORAGE_ANON_KEY}`,
+      'Content-Type': 'application/pdf',
+      'x-upsert': 'true'
+    },
+    body: file
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.message || 'Error al subir el archivo PDF a almacenamiento');
+  }
+
+  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
+}
 
 function parseLocalDate(str) {
   if (!str) return new Date();
@@ -1264,24 +1289,49 @@ async function savePlaneacion(e) {
     return;
   }
 
-  const payload = new FormData();
-  payload.append('docente_id', did);
-  payload.append('area', document.getElementById('area').value.trim());
-  payload.append('grado', document.getElementById('grado').value.trim());
-  payload.append('fecha_aplicacion', fechaAppStr);
-  payload.append('numero_semana', autoSemana);
-  payload.append('observaciones', obsFinal);
+  const btn = document.getElementById('btnSubmitPlan');
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ Subiendo archivo PDF...'; }
+
+  let fileUrl = '';
   if (file) {
-    payload.append('archivo', file);
-  } else {
-    payload.append('nombre_archivo', fileName);
+    try {
+      fileUrl = await uploadPdfDirectToStorage(file);
+    } catch (upErr) {
+      console.warn('Subida directa a Supabase Storage falló, enviando por servidor:', upErr);
+    }
   }
 
   try {
-    const btn = document.getElementById('btnSubmitPlan');
-    if (btn) { btn.disabled = true; btn.innerText = '⏳ Guardando...'; }
+    if (btn) { btn.innerText = '⏳ Guardando planeación...'; }
 
-    await API.Planeaciones.create(payload);
+    if (fileUrl) {
+      // Subida ultra rápida por JSON (evita el límite de 4.5 MB de Vercel)
+      await API.Planeaciones.create({
+        docente_id: did,
+        area: document.getElementById('area').value.trim(),
+        grado: document.getElementById('grado').value.trim(),
+        fecha_aplicacion: fechaAppStr,
+        numero_semana: autoSemana,
+        observaciones: obsFinal,
+        nombre_archivo: fileUrl
+      });
+    } else {
+      // Fallback por FormData
+      const payload = new FormData();
+      payload.append('docente_id', did);
+      payload.append('area', document.getElementById('area').value.trim());
+      payload.append('grado', document.getElementById('grado').value.trim());
+      payload.append('fecha_aplicacion', fechaAppStr);
+      payload.append('numero_semana', autoSemana);
+      payload.append('observaciones', obsFinal);
+      if (file) {
+        payload.append('archivo', file);
+      } else {
+        payload.append('nombre_archivo', fileName);
+      }
+      await API.Planeaciones.create(payload);
+    }
+
     showToast('✅ Planeación registrada correctamente', 'success');
     
     try {
@@ -1526,20 +1576,43 @@ async function saveAdminModalPlaneacion(e) {
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
   const autoSemana = parseInt(document.getElementById('adminModalSemana').value) || weekNumber(parseLocalDate(fechaAppStr));
 
-  const payload = new FormData();
-  payload.append('docente_id', docenteId);
-  payload.append('area', area);
-  payload.append('grado', grado);
-  payload.append('fecha_aplicacion', fechaAppStr);
-  payload.append('numero_semana', autoSemana);
-  payload.append('observaciones', obsFinal);
-  payload.append('archivo', file);
-
   const btn = document.getElementById('btnAdminModalSubmit');
-  if (btn) { btn.disabled = true; btn.innerText = 'Subiendo planeación...'; }
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ Subiendo archivo PDF...'; }
+
+  let fileUrl = '';
+  if (file) {
+    try {
+      fileUrl = await uploadPdfDirectToStorage(file);
+    } catch (upErr) {
+      console.warn('Subida directa falló, intentando por servidor:', upErr);
+    }
+  }
 
   try {
-    await API.Planeaciones.create(payload);
+    if (btn) { btn.innerText = '⏳ Guardando planeación...'; }
+
+    if (fileUrl) {
+      await API.Planeaciones.create({
+        docente_id: docenteId,
+        area: area,
+        grado: grado,
+        fecha_aplicacion: fechaAppStr,
+        numero_semana: autoSemana,
+        observaciones: obsFinal,
+        nombre_archivo: fileUrl
+      });
+    } else {
+      const payload = new FormData();
+      payload.append('docente_id', docenteId);
+      payload.append('area', area);
+      payload.append('grado', grado);
+      payload.append('fecha_aplicacion', fechaAppStr);
+      payload.append('numero_semana', autoSemana);
+      payload.append('observaciones', obsFinal);
+      if (file) payload.append('archivo', file);
+      await API.Planeaciones.create(payload);
+    }
+
     showToast('✅ Planeación registrada exitosamente como Administrador', 'success');
 
     const adminModal = document.getElementById('adminUploadModal');
@@ -1616,28 +1689,52 @@ async function ejecutarReemplazar(planId) {
   if (!isPdf) { showToast('Solo se aceptan archivos PDF', 'error'); return; }
 
   const btn = document.getElementById('btnConfirmarReemplazar');
-  if (btn) { btn.disabled = true; btn.innerText = 'Subiendo...'; }
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ Subiendo archivo PDF...'; }
+
+  let fileUrl = '';
+  if (file) {
+    try {
+      fileUrl = await uploadPdfDirectToStorage(file);
+    } catch (upErr) {
+      console.warn('Subida directa de reemplazo falló, intentando por servidor:', upErr);
+    }
+  }
 
   try {
-    const formData = new FormData();
-    formData.append('archivo', file);
-    if (pass) formData.append('password_confirmacion', pass);
-
     const token = Storage.getToken();
     const API_BASE = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')
       ? `http://${window.location.hostname}:3001/api`
       : '/api';
 
-    const res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData
-    });
+    let res;
+    if (fileUrl) {
+      res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          nombre_archivo: fileUrl,
+          password_confirmacion: pass || undefined
+        })
+      });
+    } else {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      if (pass) formData.append('password_confirmacion', pass);
+
+      res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+    }
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al reemplazar');
 
-    document.getElementById('reemplazarModal').remove();
+    document.getElementById('reemplazarModal')?.remove();
     showToast('✅ PDF reemplazado correctamente', 'success');
 
     if (isAdmin) {
@@ -1651,8 +1748,10 @@ async function ejecutarReemplazar(planId) {
       await loadPlaneaciones();
     }
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.innerText = '📤 Confirmar Reemplazo'; }
     showToast(err.message || 'Error al reemplazar PDF', 'error');
+  } finally {
+    const btn = document.getElementById('btnConfirmarReemplazar');
+    if (btn) { btn.disabled = false; btn.innerText = '📤 Confirmar Reemplazo'; }
   }
 }
 
