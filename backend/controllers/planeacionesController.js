@@ -181,7 +181,10 @@ exports.create = async (req, res) => {
 
   // Manejo de archivo con Multer & Supabase Storage
   if (req.file) {
-    if (req.file.mimetype !== 'application/pdf') {
+    const isPdf = req.file.mimetype === 'application/pdf' || 
+                  req.file.mimetype === 'application/x-pdf' || 
+                  (req.file.originalname && req.file.originalname.toLowerCase().endsWith('.pdf'));
+    if (!isPdf) {
       return res.status(400).json({ error: 'Únicamente se permiten archivos en formato PDF (.pdf)' });
     }
 

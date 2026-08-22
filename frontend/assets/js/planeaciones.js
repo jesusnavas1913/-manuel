@@ -1249,7 +1249,7 @@ async function savePlaneacion(e) {
   const userObs = (document.getElementById('observaciones').value || '').trim();
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
   const fechaApp = parseLocalDate(fechaAppStr);
-  const autoSemana = weekNumber(fechaApp);
+  const autoSemana = parseInt(document.getElementById('selSemanaDocente')?.value) || weekNumber(fechaApp);
   const currentSemana = weekNumber(new Date());
 
   if (user && user.rol === 'docente' && autoSemana > currentSemana) {
