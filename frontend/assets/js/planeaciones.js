@@ -107,13 +107,10 @@ function populateDocenteWeekSelect() {
 
   const now = new Date();
   const currentW = weekNumber(now);
-  const dayNow = now.getDay();
-  const isWeekendOrFriday = (dayNow === 0 || dayNow === 5 || dayNow === 6);
   const user = Storage.getUser();
-
-  // Para docente: de viernes a domingo permite la semana siguiente (currentW + 1), de lunes a jueves máximo la semana actual (currentW)
-  const maxW = (user && user.rol === 'docente' && !isWeekendOrFriday) ? currentW : currentW + 1;
-  const defaultW = (user && user.rol === 'docente' && isWeekendOrFriday) ? currentW + 1 : currentW;
+  // Para docente: permite desde la semana actual hasta la semana siguiente (currentW + 1) de lunes a domingo
+  const maxW = (user && user.rol === 'docente') ? currentW + 1 : currentW + 1;
+  const defaultW = currentW;
 
   let optionsHtml = '';
   for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
@@ -835,14 +832,10 @@ function updateAutoSemanaHelper() {
   } else if (w === currentW) {
     statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Entrega A Tiempo)</span>`;
   } else if (w === currentW + 1) {
-    if (user && user.rol === 'docente' && !isWeekend) {
-      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 La semana que viene se habilita únicamente los fines de semana (Sábado y Domingo)</span>`;
-    } else {
-      statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Siguiente / La Que Viene (Entrega A Tiempo)</span>`;
-    }
+    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Siguiente / La Que Viene (Entrega Habilitada)</span>`;
   } else {
     if (user && user.rol === 'docente') {
-      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones a más de 1 semana de antelación</span>`;
+      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones a más de 1 semana de antelación (Máximo Semana ${currentW + 1})</span>`;
     } else {
       statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Adelantada (Modo Admin)</span>`;
     }
@@ -1306,16 +1299,10 @@ async function savePlaneacion(e) {
   const autoSemana = parseInt(document.getElementById('selSemanaDocente')?.value) || weekNumber(fechaApp);
   const now = new Date();
   const currentSemana = weekNumber(now);
-  const dayNow = now.getDay();
-  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
-  const maxSemanaPermitida = isWeekend ? currentSemana + 1 : currentSemana;
+  const maxSemanaPermitida = currentSemana + 1;
 
   if (user && user.rol === 'docente' && autoSemana > maxSemanaPermitida) {
-    if (autoSemana === currentSemana + 1 && !isWeekend) {
-      showToast('⚠️ La entrega de la semana que viene únicamente se habilita durante los fines de semana (Sábado y Domingo).', 'error');
-    } else {
-      showToast(`⚠️ Por motivos de seguridad de software, no se permite registrar planeaciones con más de 1 semana de antelación (Máximo Semana ${maxSemanaPermitida}).`, 'error');
-    }
+    showToast(`⚠️ Por motivos de seguridad de software, no se permite registrar planeaciones con más de 1 semana de antelación (Máximo Semana ${maxSemanaPermitida}).`, 'error');
     return;
   }
 
@@ -1732,13 +1719,11 @@ async function ejecutarReemplazar(planId) {
 
   try {
     const token = Storage.getToken();
-    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168')
-      ? `http://${window.location.hostname}:3001/api`
-      : '/api';
+    const endpointUrl = (typeof API_BASE !== 'undefined' ? API_BASE : '/api');
 
     let res;
     if (fileUrl) {
-      res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
+      res = await fetch(`${endpointUrl}/planeaciones/${planId}/reemplazar`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -1754,7 +1739,7 @@ async function ejecutarReemplazar(planId) {
       formData.append('archivo', file);
       if (pass) formData.append('password_confirmacion', pass);
 
-      res = await fetch(`${API_BASE}/planeaciones/${planId}/reemplazar`, {
+      res = await fetch(`${endpointUrl}/planeaciones/${planId}/reemplazar`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
