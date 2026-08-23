@@ -1,4 +1,20 @@
-const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
+function getCurrentAcademicWeekBackend(d = new Date()) {
+  const date = new Date(d.valueOf());
+  if (date.getDay() === 0) {
+    date.setDate(date.getDate() + 1);
+  }
+  const target = new Date(date.valueOf());
+  const dayNr = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  return 1 + Math.ceil((firstThursday - target) / 604800000);
+}
+
+const MIN_SEMANA_LECTIVA = 32;
 
 // GET /api/reportes
 // Query params: docente_id, sede_id, jornada_id, grado, estado, semana, anio
@@ -6,71 +22,109 @@ exports.getReporte = async (req, res) => {
   const { docente_id, sede_id, jornada_id, grado, estado, semana, anio } = req.query;
 
   try {
-    const needInnerJoin = Boolean(sede_id || jornada_id);
-    const selectStr = needInnerJoin ? '*, docentes!inner(*)' : '*, docentes(*)';
-    let query = supabase.from('planeaciones').select(selectStr, { count: 'exact' });
+    // 1. Obtener todas las planeaciones reales
+    const { data: realPlanes, error: pErr } = await supabase
+      .from('planeaciones')
+      .select('*, docentes(*)');
+    if (pErr) throw pErr;
 
-    // Si es docente, forzar su propio id
+    // 2. Obtener todos los docentes activos
+    const { data: allDocentes, error: dErr } = await supabase
+      .from('docentes')
+      .select('*')
+      .eq('estado', 'activo');
+    if (dErr) throw dErr;
+
+    const currentW = getCurrentAcademicWeekBackend(new Date());
+    const targetMaxWeek = semana ? parseInt(semana) : currentW;
+    const targetMinWeek = semana ? parseInt(semana) : MIN_SEMANA_LECTIVA;
+
+    // Map de entregas existentes por docente y semana
+    const realPlansMap = new Set();
+    const cleanRealPlanes = (realPlanes || []).filter(p => p.estado !== 'no_entrego');
+    
+    cleanRealPlanes.forEach(p => {
+      if (p.docente_id && p.numero_semana) {
+        realPlansMap.add(`${p.docente_id}_${p.numero_semana}`);
+      }
+    });
+
+    // 3. Generar entregas sintéticas de 'no_entrego' para semanas no entregadas
+    const syntheticNoEntrego = [];
+    (allDocentes || []).forEach(d => {
+      for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
+        if (w < MIN_SEMANA_LECTIVA) continue;
+        const key = `${d.id}_${w}`;
+        if (!realPlansMap.has(key)) {
+          syntheticNoEntrego.push({
+            id: `synthetic_no_${d.id}_sem${w}`,
+            docente_id: d.id,
+            docentes: d,
+            area: d.areas ? d.areas.split(',')[0] : 'General',
+            grado: d.grados ? d.grados.split(',')[0] : 'Sin Grado',
+            numero_semana: w,
+            fecha_subida: null,
+            fecha_aplicacion: null,
+            nombre_archivo: null,
+            observaciones: 'Registro automático: Pendiente de entrega en la plataforma SIGEP',
+            estado: 'no_entrego'
+          });
+        }
+      }
+    });
+
+    // 4. Combinar registros reales (sin los no_entrego obsoletos) y sintéticos
+    let allRecords = [...cleanRealPlanes, ...syntheticNoEntrego];
+
+    // 5. Filtrar por permisos de docente logueado
     if (req.user.rol === 'docente') {
       let did = req.user.docente_id;
       if (!did && req.user.correo) {
-        const { data: dRows } = await supabase.from('docentes').select('id').eq('correo', req.user.correo.toLowerCase().trim());
-        if (dRows && dRows.length > 0) did = dRows[0].id;
+        const match = (allDocentes || []).find(d => d.correo && d.correo.toLowerCase().trim() === req.user.correo.toLowerCase().trim());
+        if (match) did = match.id;
       }
       if (did) {
-        query = query.eq('docente_id', parseInt(did));
+        allRecords = allRecords.filter(r => String(r.docente_id) === String(did));
       }
     } else if (docente_id) {
-      query = query.eq('docente_id', parseInt(docente_id));
+      allRecords = allRecords.filter(r => String(r.docente_id) === String(docente_id));
     }
 
-    if (sede_id) { query = query.eq('docentes.sede_id', parseInt(sede_id)); }
-    if (jornada_id) { query = query.eq('docentes.jornada_id', parseInt(jornada_id)); }
-    if (grado) { query = query.ilike('grado', `%${grado}%`); }
-    if (estado) { query = query.eq('estado', estado); }
-    if (semana) { query = query.eq('numero_semana', parseInt(semana)); }
+    // 6. Aplicar Filtros Dinámicos
+    if (sede_id) {
+      const sId = parseInt(sede_id);
+      allRecords = allRecords.filter(r => r.docentes && parseInt(r.docentes.sede_id) === sId);
+    }
+    if (jornada_id) {
+      const jId = parseInt(jornada_id);
+      allRecords = allRecords.filter(r => r.docentes && parseInt(r.docentes.jornada_id) === jId);
+    }
+    if (grado) {
+      const gStr = grado.toLowerCase().trim();
+      allRecords = allRecords.filter(r => (r.grado || '').toLowerCase().includes(gStr));
+    }
+    if (estado) {
+      allRecords = allRecords.filter(r => r.estado === estado);
+    }
+    if (semana) {
+      const semNum = parseInt(semana);
+      allRecords = allRecords.filter(r => parseInt(r.numero_semana) === semNum);
+    }
+    if (anio) {
+      allRecords = allRecords.filter(r => r.fecha_subida && r.fecha_subida.startsWith(anio));
+    }
 
-    query = query.order('fecha_subida', { ascending: false });
+    // Ordenar: primero no_entrego / retraso, luego por número de semana descendente
+    allRecords.sort((a, b) => (b.numero_semana || 0) - (a.numero_semana || 0));
 
+    // 7. Paginación
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 25;
+    const totalCount = allRecords.length;
     const from = (page - 1) * limit;
-    const to = from + limit - 1;
+    const paginatedRecords = allRecords.slice(from, from + limit);
 
-    // Apply pagination ONLY if we are not filtering by anio or sede/jornada post-checks
-    if (!anio && !sede_id && !jornada_id) {
-      query = query.range(from, to);
-    }
-
-    const { data: rows, error, count } = await query;
-    if (error) throw error;
-
-    let filteredRows = rows || [];
-
-    // Filtros estrictos de respaldo en backend
-    if (sede_id) {
-      const targetSede = parseInt(sede_id);
-      filteredRows = filteredRows.filter(r => r.docentes && parseInt(r.docentes.sede_id) === targetSede);
-    }
-
-    if (jornada_id) {
-      const targetJornada = parseInt(jornada_id);
-      filteredRows = filteredRows.filter(r => r.docentes && parseInt(r.docentes.jornada_id) === targetJornada);
-    }
-
-    if (anio) {
-      filteredRows = filteredRows.filter(r => r.fecha_subida && r.fecha_subida.startsWith(anio));
-    }
-
-    let finalRows = filteredRows;
-    let finalCount = count || filteredRows.length;
-    
-    if (anio || sede_id || jornada_id) {
-      finalCount = filteredRows.length;
-      finalRows = filteredRows.slice(from, to + 1);
-    }
-
-    const mapped = finalRows.map(p => {
+    const mapped = paginatedRecords.map(p => {
       const d = p.docentes || {};
       const sId = (d && d.sede_id !== undefined && d.sede_id !== null) ? parseInt(d.sede_id) : null;
       const jId = (d && d.jornada_id !== undefined && d.jornada_id !== null) ? parseInt(d.jornada_id) : null;
@@ -84,16 +138,16 @@ exports.getReporte = async (req, res) => {
       };
     });
 
-    const totalPages = Math.ceil(finalCount / limit) || 1;
+    const totalPages = Math.ceil(totalCount / limit) || 1;
 
     res.json({
       data: mapped,
-      total: finalCount,
+      total: totalCount,
       page,
       totalPages
     });
   } catch (err) {
-    console.error(err);
+    console.error('Error al generar reporte:', err);
     res.status(500).json({ error: 'Error al generar reporte' });
   }
 };
