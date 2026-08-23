@@ -105,29 +105,43 @@ function populateDocenteWeekSelect() {
   const sel = document.getElementById('selSemanaDocente');
   if (!sel) return;
 
-  const currentW = weekNumber(new Date());
+  const now = new Date();
+  const currentW = weekNumber(now);
+  const dayNow = now.getDay();
+  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
+  const user = Storage.getUser();
+
+  // Para docente: en fin de semana permite currentW + 1 (la semana entra), entre semana máximo currentW
+  // Para admin: siempre incluye currentW + 1
+  const maxW = (user && user.rol === 'docente' && !isWeekend) ? currentW : currentW + 1;
+  const defaultW = (user && user.rol === 'docente' && isWeekend) ? currentW + 1 : currentW;
 
   let optionsHtml = '';
-  for (let w = currentW; w >= MIN_SEMANA_LECTIVA; w--) {
+  for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
+    const isNext = w === currentW + 1;
     const isCur = w === currentW;
-    const label = isCur ? `Semana ${w} (Semana Actual - En Curso)` : `Semana ${w} (Semana Anterior)`;
-    optionsHtml += `<option value="${w}" ${isCur ? 'selected' : ''}>${label}</option>`;
+    let label = `Semana ${w} (Semana Anterior)`;
+    if (isNext) label = `Semana ${w} (Semana Siguiente - La Semana Entra)`;
+    else if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
+
+    const isSel = w === defaultW;
+    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;
   }
 
   sel.innerHTML = optionsHtml;
 
-  const mondayCurrentStr = getMondayOfISOWeek(currentW);
+  const mondayDefaultStr = getMondayOfISOWeek(defaultW);
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
-    dateInput.value = mondayCurrentStr;
+    dateInput.value = mondayDefaultStr;
 
-    const user = Storage.getUser();
     if (user && user.rol === 'docente') {
-      const sundayCurrent = parseLocalDate(mondayCurrentStr);
-      sundayCurrent.setDate(sundayCurrent.getDate() + 6);
-      const sY = sundayCurrent.getFullYear();
-      const sM = String(sundayCurrent.getMonth() + 1).padStart(2, '0');
-      const sD = String(sundayCurrent.getDate()).padStart(2, '0');
+      const mondayMaxStr = getMondayOfISOWeek(maxW);
+      const sundayMax = parseLocalDate(mondayMaxStr);
+      sundayMax.setDate(sundayMax.getDate() + 6);
+      const sY = sundayMax.getFullYear();
+      const sM = String(sundayMax.getMonth() + 1).padStart(2, '0');
+      const sD = String(sundayMax.getDate()).padStart(2, '0');
       dateInput.max = `${sY}-${sM}-${sD}`;
     }
     updateAutoSemanaHelper();
@@ -804,7 +818,10 @@ function updateAutoSemanaHelper() {
   }
   const dateObj = parseLocalDate(val);
   const w = weekNumber(dateObj);
-  const currentW = weekNumber(new Date());
+  const now = new Date();
+  const currentW = weekNumber(now);
+  const dayNow = now.getDay();
+  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
   const user = Storage.getUser();
 
   // Sincronizar el selector selSemanaDocente si existe
@@ -818,9 +835,15 @@ function updateAutoSemanaHelper() {
     statusBadge = `<span style="background:rgba(217,119,6,0.18); color:#d97706; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟡 Entrega Atrasada (Se registrará Con Retraso)</span>`;
   } else if (w === currentW) {
     statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Entrega A Tiempo)</span>`;
+  } else if (w === currentW + 1) {
+    if (user && user.rol === 'docente' && !isWeekend) {
+      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 La semana siguiente se habilita únicamente los fines de semana (Sábado y Domingo)</span>`;
+    } else {
+      statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Siguiente / Entrante (Entrega A Tiempo)</span>`;
+    }
   } else {
     if (user && user.rol === 'docente') {
-      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones adelantadas (Solo Semana ${currentW} o anteriores)</span>`;
+      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones a más de 1 semana de antelación</span>`;
     } else {
       statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Adelantada (Modo Admin)</span>`;
     }
@@ -1282,10 +1305,18 @@ async function savePlaneacion(e) {
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
   const fechaApp = parseLocalDate(fechaAppStr);
   const autoSemana = parseInt(document.getElementById('selSemanaDocente')?.value) || weekNumber(fechaApp);
-  const currentSemana = weekNumber(new Date());
+  const now = new Date();
+  const currentSemana = weekNumber(now);
+  const dayNow = now.getDay();
+  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
+  const maxSemanaPermitida = isWeekend ? currentSemana + 1 : currentSemana;
 
-  if (user && user.rol === 'docente' && autoSemana > currentSemana) {
-    showToast(`⚠️ Por motivos de seguridad de software, los docentes no pueden ingresar planeaciones para semanas adelantadas. Únicamente se permite la semana actual (Semana ${currentSemana}) o semanas anteriores.`, 'error');
+  if (user && user.rol === 'docente' && autoSemana > maxSemanaPermitida) {
+    if (autoSemana === currentSemana + 1 && !isWeekend) {
+      showToast('⚠️ La entrega de la semana siguiente únicamente se habilita durante los fines de semana (Sábado y Domingo).', 'error');
+    } else {
+      showToast(`⚠️ Por motivos de seguridad de software, no se permite registrar planeaciones con más de 1 semana de antelación (Máximo Semana ${maxSemanaPermitida}).`, 'error');
+    }
     return;
   }
 

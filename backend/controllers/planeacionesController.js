@@ -229,10 +229,19 @@ exports.create = async (req, res) => {
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
     const semanaActual = semanaISO(ahora);
 
-    // RESTRICCIÓN DE SEGURIDAD: Los docentes no pueden subir planeaciones para semanas adelantadas/futuras
-    if (req.user.rol === 'docente' && semana > semanaActual) {
+    // RESTRICCIÓN DE SEGURIDAD: La semana siguiente solo se habilita los fines de semana (Máximo 1 semana adelantada)
+    const dayNow = ahora.getDay();
+    const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && ahora.getHours() >= 18));
+    const maxSemanaDocente = isWeekend ? semanaActual + 1 : semanaActual;
+
+    if (req.user.rol === 'docente' && semana > maxSemanaDocente) {
+      if (semana === semanaActual + 1 && !isWeekend) {
+        return res.status(400).json({ 
+          error: 'La entrega de la semana siguiente únicamente se habilita durante el fin de semana (Sábado y Domingo). De lunes a viernes solo se permite registrar la semana actual o anteriores.' 
+        });
+      }
       return res.status(400).json({ 
-        error: `Por motivos de seguridad, los docentes no pueden ingresar planeaciones para semanas adelantadas. Únicamente se permite registrar planeaciones para la semana actual (Semana ${semanaActual}) o semanas anteriores.` 
+        error: `Por motivos de seguridad, los docentes no pueden ingresar planeaciones con más de una semana de antelación (Máximo Semana ${maxSemanaDocente}).` 
       });
     }
 
@@ -315,14 +324,21 @@ exports.update = async (req, res) => {
     }
     // Administrador no necesita contraseña
 
-    // Verificar restricción de semana adelantada para docentes al actualizar
+    // Verificar restricción de semana adelantada para docentes al actualizar (solo semana siguiente en fin de semana)
     if (req.user.rol === 'docente' && (fecha_aplicacion || numero_semana)) {
       const targetD = fecha_aplicacion ? new Date(fecha_aplicacion) : new Date();
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
-      const currentW = semanaISO(new Date());
-      if (targetW > currentW) {
+      const now = new Date();
+      const currentW = semanaISO(now);
+      const dayNow = now.getDay();
+      const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
+      const maxW = isWeekend ? currentW + 1 : currentW;
+
+      if (targetW > maxW) {
         return res.status(400).json({
-          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a semanas adelantadas. Semana actual: ${currentW}.`
+          error: isWeekend
+            ? `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a más de 1 semana adelantada (Máximo Semana ${maxW}).`
+            : 'La entrega de la semana siguiente únicamente se habilita durante los fines de semana (Sábado y Domingo).'
         });
       }
     }
