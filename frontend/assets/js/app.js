@@ -247,6 +247,15 @@ function weekNumber(d = new Date()) {
   return 1 + Math.ceil((firstThursday - target) / 604800000);
 }
 
+function getCurrentAcademicWeek(d = new Date()) {
+  const date = new Date(d.valueOf());
+  // Si es domingo (día 0), las planeaciones que se entregan corresponden a la semana de clases que inicia mañana lunes.
+  if (date.getDay() === 0) {
+    date.setDate(date.getDate() + 1);
+  }
+  return weekNumber(date);
+}
+
 function showToast(msg, type = 'info') {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();

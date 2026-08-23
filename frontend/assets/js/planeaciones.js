@@ -105,7 +105,7 @@ function populateDocenteWeekSelect() {
   if (!sel) return;
 
   const now = new Date();
-  const currentW = weekNumber(now);
+  const currentW = getCurrentAcademicWeek(now);
   const user = Storage.getUser();
   // Para docente: permite desde la semana actual hasta la semana siguiente (currentW + 1) de lunes a domingo
   const maxW = (user && user.rol === 'docente') ? currentW + 1 : currentW + 1;
@@ -157,7 +157,7 @@ function onSemanaDocenteChange(val) {
 
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
-let selectedAdminWeek = weekNumber(new Date());
+let selectedAdminWeek = getCurrentAcademicWeek(new Date());
 
 async function loadAdminDocentes() {
   try {
@@ -175,7 +175,7 @@ function populateAdminWeekSelect() {
   const sel = document.getElementById('selAdminWeek');
   if (!sel) return;
 
-  const currentW = weekNumber(new Date());
+  const currentW = getCurrentAcademicWeek(new Date());
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
@@ -331,8 +331,8 @@ function renderAdminDocentes(list = adminDocentesData) {
     const stats = getDocenteComplianceStats(d.id, targetW);
 
     const statusSemanaHtml = stats.hasTargetWeekDelivery
-      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (${stats.targetWeekCount} ${stats.targetWeekCount === 1 ? 'planeación' : 'planeaciones'})</span><br><small style="color:var(--text-muted); font-size:11px;">Total subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
-      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin entrega</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 3).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 3 ? '...' : ''}</small>`;
+      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span><br><small style="color:var(--text-muted); font-size:11px;">Total subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
+      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin entrega (Sem ${targetW})</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 4).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 4 ? '...' : ''}</small>`;
 
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
