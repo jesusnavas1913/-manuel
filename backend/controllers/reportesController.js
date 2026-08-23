@@ -1,3 +1,5 @@
+const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
+
 function getCurrentAcademicWeekBackend(d = new Date()) {
   const date = new Date(d.valueOf());
   if (date.getDay() === 0) {
