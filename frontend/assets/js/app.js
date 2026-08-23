@@ -427,8 +427,8 @@ async function generateUserNotifications(user) {
       notifications.push({
         id: 'notif_plazo_semanal',
         icon: '💡',
-        title: 'Plazo de Entrega Ordinario',
-        message: 'Recuerda que las entregas a tiempo deben realizarse a más tardar el domingo a las 23:59:59 antes de iniciar la semana de clases.',
+        title: 'Plazo de Entrega 24/7',
+        message: 'El sistema permite registrar planeaciones a cualquier hora del día (24/7). Las entregas dentro de la semana corresponden a la modalidad ordinaria a tiempo.',
         type: 'info',
         read: false
       });
