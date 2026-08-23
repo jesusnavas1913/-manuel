@@ -16,14 +16,13 @@ async function initPlaneacionesPage() {
     if (adminDocentesCard) adminDocentesCard.style.display = 'block';
 
     await loadDocentesSelect();
+    await loadAdminDocentes();
 
     const urlParams = new URLSearchParams(window.location.search);
     const filterParam = urlParams.get('filter');
     if (filterParam === 'pending' || filterParam === 'ok' || filterParam === 'all') {
       currentAdminDocenteFilter = filterParam;
       setAdminDocenteFilter(filterParam);
-    } else {
-      await loadAdminDocentes();
     }
   } else {
     // Docente: Mostrar formulario para registrar y tabla con sus planeaciones
@@ -213,16 +212,16 @@ function updateAdminWeeklySummary() {
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
-    const hasWeekDelivery = deliveredCount >= 4;
+    const hasWeekDelivery = deliveredCount >= 1;
     if (hasWeekDelivery) okCount++;
     else pendingCount++;
   });
 
   const statOk = document.getElementById('statDocentesOk');
-  if (statOk) statOk.textContent = `🟢 Entregaron (≥4): ${okCount}`;
+  if (statOk) statOk.textContent = `🟢 Entregaron: ${okCount}`;
 
   const statPending = document.getElementById('statDocentesPending');
-  if (statPending) statPending.textContent = `🔴 Sin Entregar (<4): ${pendingCount}`;
+  if (statPending) statPending.textContent = `🔴 Sin Entregar: ${pendingCount}`;
 }
 
 function setAdminDocenteFilter(filterType) {
@@ -273,22 +272,22 @@ function filterAdminDocentes() {
 function getDocenteComplianceStats(docenteId, targetWeek) {
   const MIN_REQUERIDO = 1;
   const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
-  const validPlans = docPlans.filter(p => p.estado !== 'no_entrego');
+  const validPlans = docPlans.filter(p => p.estado !== 'no_entrego' && parseInt(p.numero_semana) >= MIN_SEMANA_LECTIVA);
   const totalSubidas = validPlans.length;
 
   const weekCounts = {};
   validPlans.forEach(p => {
     const w = parseInt(p.numero_semana);
-    if (w) weekCounts[w] = (weekCounts[w] || 0) + 1;
+    if (w && w >= MIN_SEMANA_LECTIVA) weekCounts[w] = (weekCounts[w] || 0) + 1;
   });
 
   const deliveredWeeks = Object.keys(weekCounts)
     .map(Number)
-    .filter(w => weekCounts[w] >= MIN_REQUERIDO)
+    .filter(w => w >= MIN_SEMANA_LECTIVA && weekCounts[w] >= MIN_REQUERIDO)
     .sort((a, b) => a - b);
 
-  const firstDelivered = deliveredWeeks.length > 0 ? Math.min(...deliveredWeeks) : MIN_SEMANA_LECTIVA;
-  const startW = Math.min(MIN_SEMANA_LECTIVA, firstDelivered);
+  // El sistema SIGEP inició estrictamente en la Semana 32. Jamás evaluar semanas < 32.
+  const startW = MIN_SEMANA_LECTIVA;
 
   const missingWeeks = [];
   for (let w = startW; w <= targetWeek; w++) {

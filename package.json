@@ -6,7 +6,8 @@
   "main": "api/index.js",
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "cd backend && npx nodemon server.js",
+    "dev": "npx nodemon backend/server.js",
+    "install:all": "npm install && cd backend && npm install",
     "build": "echo 'No build step needed'"
   },
   "dependencies": {

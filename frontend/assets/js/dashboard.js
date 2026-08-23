@@ -60,7 +60,7 @@ async function initDashboard() {
           parseInt(p.numero_semana) === currentW && 
           p.estado !== 'no_entrego'
         ).length;
-        const hasDelivered = count >= 4;
+        const hasDelivered = count >= 1;
         if (hasDelivered) okCount++;
         else pendingCount++;
       });
@@ -129,7 +129,7 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'
     ).length;
-    return count >= 4;
+    return count >= 1;
   };
 
   // Renderizar Sedes
@@ -187,11 +187,11 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
         <!-- Metrics Grid -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 12px; background: var(--bg, #f8fafc); padding: 10px; border-radius: 10px; border: 1px solid var(--border);">
           <div>
-            <span style="color: var(--text-muted); font-size: 11px; display: block;">🟢 Al Día (≥4)</span>
+            <span style="color: var(--text-muted); font-size: 11px; display: block;">🟢 Al Día</span>
             <strong style="color: #10b981; font-size: 14px;">${okDoc}</strong>
           </div>
           <div>
-            <span style="color: var(--text-muted); font-size: 11px; display: block;">🔴 Faltantes (<4)</span>
+            <span style="color: var(--text-muted); font-size: 11px; display: block;">🔴 Faltantes</span>
             <strong style="color: #ef4444; font-size: 14px;">${pendingDoc}</strong>
           </div>
         </div>
