@@ -5,8 +5,11 @@ const { body } = require('express-validator');
 const { validateResult } = require('../middleware/validator');
 const multer = require('multer');
 
-// Usamos memoryStorage porque subiremos el buffer directamente a Supabase
-const upload = multer({ storage: multer.memoryStorage() });
+// Usamos memoryStorage con límite de 50MB para subir el buffer a Supabase
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
 
 router.get('/', auth, c.getAll);
 

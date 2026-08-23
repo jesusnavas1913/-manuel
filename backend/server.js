@@ -31,9 +31,9 @@ app.use(cors({
 
 app.options('*', cors());
 
-// Limitar tamaño de carga de payloads JSON para evitar DoS
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Limitar tamaño de carga de payloads JSON y FormData a 50MB
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ── Rate Limiter General para Rutas API ───────────────────────
 app.use('/api/', apiLimiter);

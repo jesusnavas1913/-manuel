@@ -21,7 +21,7 @@ function parseDateSafe(dStr) {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-// Helper: calcular si es a tiempo (disponible 24/7 a cualquier hora, registrando a_tiempo hasta el domingo al cierre de la semana)
+// Helper: calcular si es a tiempo (a tiempo hasta el domingo previo al inicio de la semana de clases; si se sube durante la semana de clases o posterior es con retraso)
 function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
   if (esSemanaInstitucional) return 'semana_institucional';
 
@@ -35,12 +35,12 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
   lunesClase.setDate(lunesClase.getDate() + diffToMonday);
   lunesClase.setHours(0, 0, 0, 0);
 
-  // Plazo a tiempo: Hasta el domingo al finalizar la semana de clases (23:59:59)
-  const domingoFinSemana = new Date(lunesClase);
-  domingoFinSemana.setDate(domingoFinSemana.getDate() + 6);
-  domingoFinSemana.setHours(23, 59, 59, 999);
+  // Plazo a tiempo: Hasta el domingo previo al inicio de la semana de clases (23:59:59)
+  const domingoPrevio = new Date(lunesClase);
+  domingoPrevio.setDate(domingoPrevio.getDate() - 1);
+  domingoPrevio.setHours(23, 59, 59, 999);
 
-  return subida <= domingoFinSemana ? 'a_tiempo' : 'retraso';
+  return subida <= domingoPrevio ? 'a_tiempo' : 'retraso';
 }
 
 // Helper: calcular número de semana ISO
@@ -230,15 +230,15 @@ exports.create = async (req, res) => {
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
     const semanaActual = semanaISO(ahora);
 
-    // RESTRICCIÓN DE SEGURIDAD: La semana que viene (semanaActual + 1) se habilita en fin de semana (Sábado y Domingo)
+    // RESTRICCIÓN DE SEGURIDAD: La semana que viene (semanaActual + 1) se habilita desde el viernes y durante todo el fin de semana (Viernes, Sábado y Domingo)
     const dayNow = ahora.getDay();
-    const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && ahora.getHours() >= 18));
-    const maxSemanaDocente = isWeekend ? semanaActual + 1 : semanaActual;
+    const isWeekendOrFriday = (dayNow === 0 || dayNow === 5 || dayNow === 6);
+    const maxSemanaDocente = isWeekendOrFriday ? semanaActual + 1 : semanaActual;
 
     if (req.user.rol === 'docente' && semana > maxSemanaDocente) {
-      if (semana === semanaActual + 1 && !isWeekend) {
+      if (semana === semanaActual + 1 && !isWeekendOrFriday) {
         return res.status(400).json({ 
-          error: 'La entrega para la semana que viene únicamente se habilita durante el fin de semana (Sábado y Domingo). De lunes a viernes se debe registrar la semana en curso o anteriores.' 
+          error: 'La entrega para la semana siguiente únicamente se habilita a partir del viernes y durante el fin de semana (Viernes, Sábado y Domingo). De lunes a jueves se debe registrar la semana en curso o anteriores.' 
         });
       }
       return res.status(400).json({ 
@@ -325,21 +325,21 @@ exports.update = async (req, res) => {
     }
     // Administrador no necesita contraseña
 
-    // Verificar restricción de semana adelantada para docentes al actualizar (la semana que viene solo en fin de semana)
+    // Verificar restricción de semana adelantada para docentes al actualizar (la semana que viene desde el viernes y durante el fin de semana)
     if (req.user.rol === 'docente' && (fecha_aplicacion || numero_semana)) {
       const targetD = fecha_aplicacion ? new Date(fecha_aplicacion) : new Date();
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
       const now = new Date();
       const currentW = semanaISO(now);
       const dayNow = now.getDay();
-      const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
-      const maxW = isWeekend ? currentW + 1 : currentW;
+      const isWeekendOrFriday = (dayNow === 0 || dayNow === 5 || dayNow === 6);
+      const maxW = isWeekendOrFriday ? currentW + 1 : currentW;
 
       if (targetW > maxW) {
         return res.status(400).json({
-          error: isWeekend
+          error: isWeekendOrFriday
             ? `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a más de 1 semana adelantada (Máximo Semana ${maxW}).`
-            : 'La entrega de la semana que viene únicamente se habilita durante los fines de semana (Sábado y Domingo).'
+            : 'La entrega para la semana siguiente únicamente se habilita a partir del viernes y durante el fin de semana (Viernes, Sábado y Domingo).'
         });
       }
     }

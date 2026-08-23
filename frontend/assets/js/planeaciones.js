@@ -108,12 +108,12 @@ function populateDocenteWeekSelect() {
   const now = new Date();
   const currentW = weekNumber(now);
   const dayNow = now.getDay();
-  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
+  const isWeekendOrFriday = (dayNow === 0 || dayNow === 5 || dayNow === 6);
   const user = Storage.getUser();
 
-  // Para docente: en fin de semana permite la semana que viene (currentW + 1), entre semana máximo la semana actual (currentW)
-  const maxW = (user && user.rol === 'docente' && !isWeekend) ? currentW : currentW + 1;
-  const defaultW = (user && user.rol === 'docente' && isWeekend) ? currentW + 1 : currentW;
+  // Para docente: de viernes a domingo permite la semana siguiente (currentW + 1), de lunes a jueves máximo la semana actual (currentW)
+  const maxW = (user && user.rol === 'docente' && !isWeekendOrFriday) ? currentW : currentW + 1;
+  const defaultW = (user && user.rol === 'docente' && isWeekendOrFriday) ? currentW + 1 : currentW;
 
   let optionsHtml = '';
   for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
