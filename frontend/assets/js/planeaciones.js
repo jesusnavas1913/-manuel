@@ -250,16 +250,16 @@ function populateDocenteWeekSelect() {
   if (!sel) return;
 
   const now = new Date();
-  const currentW = getCurrentAcademicWeek(now);
+  const currentW = Math.max(35, getCurrentAcademicWeek(now));
   const defaultW = currentW;
 
   let optionsHtml = '';
-  for (let w = 52; w >= 1; w--) {
-    const isNext = w === currentW + 1;
+  // Solo semana actual y semanas traseras/anteriores (sin semanas siguientes)
+  for (let w = currentW; w >= 1; w--) {
     const isCur = w === currentW;
     let label = `Semana ${w}`;
     if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
-    else if (isNext) label = `Semana ${w} (Semana Siguiente)`;
+    else label = `Semana ${w} (Anterior)`;
 
     const isSel = w === defaultW;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;
@@ -271,6 +271,13 @@ function populateDocenteWeekSelect() {
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
     dateInput.value = mondayDefaultStr;
+    const mondayObj = parseLocalDate(mondayDefaultStr);
+    const sundayObj = new Date(mondayObj);
+    sundayObj.setDate(sundayObj.getDate() + 6);
+    const yyyy = sundayObj.getFullYear();
+    const mm = String(sundayObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(sundayObj.getDate()).padStart(2, '0');
+    dateInput.max = `${yyyy}-${mm}-${dd}`;
     updateAutoSemanaHelper();
   }
 }
@@ -283,6 +290,9 @@ function onSemanaDocenteChange(val) {
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
     dateInput.value = mondayStr;
+    updateAutoSemanaHelper();
+  }
+}
     updateAutoSemanaHelper();
   }
 }

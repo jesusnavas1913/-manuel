@@ -240,6 +240,13 @@ exports.create = async (req, res) => {
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
 
+    const maxSemanaPermitida = Math.max(35, semanaISO(new Date()));
+    if (req.user.rol === 'docente' && semana > maxSemanaPermitida) {
+      return res.status(400).json({ 
+        error: `No está permitido registrar semanas siguientes (Semana ${semana}). Solo puede registrar la semana actual (Semana ${maxSemanaPermitida}) y semanas anteriores pendientes.` 
+      });
+    }
+
     const { data: docRowsInfo } = await supabase.from('docentes').select('nombre, correo').eq('id', did);
     const docNameStr = (docRowsInfo && docRowsInfo[0]) ? `${docRowsInfo[0].nombre} ${docRowsInfo[0].correo}` : '';
 
