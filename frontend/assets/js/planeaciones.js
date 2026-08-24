@@ -492,19 +492,10 @@ function renderAdminDocentes(list = adminDocentesData) {
       statusSemanaHtml = `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin entrega (Sem ${targetW})</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}</small>`;
     }
 
-    const currentUser = Storage.getUser();
-    const isOnline = currentUser && (
-      (currentUser.docente_id && String(d.id) === String(currentUser.docente_id)) ||
-      (currentUser.correo && d.correo && currentUser.correo.toLowerCase().trim() === d.correo.toLowerCase().trim())
-    );
-    const onlineDotHtml = isOnline 
-      ? `<span class="pulse-dot" style="margin-right:6px;" title="🟢 En línea en la plataforma ahora mismo"></span>` 
-      : ``;
-
     return `
       <tr style="border-bottom: 1px solid var(--border, #334155);">
         <td style="padding: 12px 10px;">
-          <strong style="font-size: 13px; color: var(--text-main, #f1f5f9);">${onlineDotHtml}${d.nombre}</strong><br>
+          <strong style="font-size: 13px; color: var(--text-main, #f1f5f9);">${d.nombre}</strong><br>
           <small style="color: var(--text-muted, #94a3b8); font-size: 11.5px;">📧 ${d.correo || 'Sin correo'}</small>
         </td>
         <td style="padding: 12px 10px;">
@@ -623,17 +614,10 @@ function openPreviewInformeModal() {
               </thead>
               <tbody>
                 ${pendingRows.length > 0 ? pendingRows.map(item => {
-                  const currentUser = Storage.getUser();
-                  const isOnline = currentUser && (
-                    (currentUser.docente_id && String(item.docente.id) === String(currentUser.docente_id)) ||
-                    (currentUser.correo && item.docente.correo && currentUser.correo.toLowerCase().trim() === item.docente.correo.toLowerCase().trim())
-                  );
-                  const onlineDotHtml = isOnline ? `<span class="pulse-dot" style="margin-right:6px;" title="🟢 En línea en la plataforma ahora mismo"></span>` : ``;
-
                   return `
                   <tr style="border-bottom:1px solid var(--border, #334155);">
                     <td style="padding:10px;">
-                      <strong>${onlineDotHtml}${item.docente.nombre}</strong><br>
+                      <strong>${item.docente.nombre}</strong><br>
                       <small style="color:var(--text-muted);">${item.docente.correo || 'Sin correo'}</small>
                     </td>
                     <td style="padding:10px;">
