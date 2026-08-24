@@ -508,7 +508,7 @@ function renderAdminDocentes(list = adminDocentesData) {
         <td style="padding: 12px 10px; max-width: 200px;">${areasTags}</td>
         <td style="padding: 12px 10px; max-width: 130px;">${gradosTags}</td>
         <td style="text-align: center; white-space: nowrap; padding: 12px 10px;">
-          <button class="btn btn-warning" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 12px; font-weight: 700; background: #f59e0b; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-right: 4px;" title="Ingresar a la cuenta de este docente">
+          <button class="btn btn-warning" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/['"]/g, '')}')" style="padding: 6px 10px; font-size: 12px; font-weight: 700; background: #f59e0b; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-right: 4px;" title="Ingresar a la cuenta de este docente">
             🔑 Entrar
           </button>
           <button class="btn btn-primary" onclick="openDocenteExpedienteModal('${d.id}')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; background: #0284c7; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;">
@@ -639,7 +639,8 @@ function openPreviewInformeModal() {
                     </td>
                     <td style="padding:10px; text-align:center;"><b>${item.stats.pctCumplimiento}%</b></td>
                   </tr>
-                `).join('') : `<tr><td colspan="5" style="text-align:center; padding:20px; color:#10b981; font-weight:700;">🎉 ¡Excelente! No hay docentes pendientes en la Semana ${targetW}.</td></tr>`}
+                  `;
+                }).join('') : `<tr><td colspan="5" style="text-align:center; padding:20px; color:#10b981; font-weight:700;">🎉 ¡Excelente! No hay docentes pendientes en la Semana ${targetW}.</td></tr>`}
               </tbody>
             </table>
           </div>

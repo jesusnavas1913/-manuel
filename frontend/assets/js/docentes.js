@@ -215,7 +215,7 @@ function renderDocentes(list = docentesData) {
         <td style="text-align: center; white-space: nowrap;">
           <button class="btn btn-primary" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#0284c7; color:#fff;" onclick="openCredencialModal(${d.id})">📇 Credencial</button>
           ${isAdmin ? `
-            <button class="btn btn-warning" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#f59e0b; color:#fff; font-weight:700;" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/'/g, "\\'")}')" title="Ingresar a la cuenta de este docente">🔑 Entrar</button>
+            <button class="btn btn-warning" style="padding: 4px 10px; font-size: 12px; margin-right:4px; background:#f59e0b; color:#fff; font-weight:700;" onclick="loginAsDocente(${d.id}, '${(d.nombre || '').replace(/['"]/g, '')}')" title="Ingresar a la cuenta de este docente">🔑 Entrar</button>
           ` : ''}
           <button class="btn btn-light" style="padding: 4px 10px; font-size: 12px; margin-right:4px;" onclick="editDocente(${d.id})">✏️ Editar</button>
           <button class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocente(${d.id})">🗑️ Eliminar</button>
