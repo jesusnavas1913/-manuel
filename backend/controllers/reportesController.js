@@ -146,10 +146,10 @@ exports.getReporte = async (req, res) => {
 
     const stats = {
       total_subidas_reales: cleanRealPlanes.length,
-      a_tiempo: allRecords.filter(r => r.estado === 'a_tiempo').length,
-      retraso: allRecords.filter(r => r.estado === 'retraso').length,
-      no_entrego: allRecords.filter(r => r.estado === 'no_entrego').length,
-      semana_institucional: allRecords.filter(r => r.estado === 'semana_institucional').length
+      a_tiempo: cleanRealPlanes.filter(r => r.estado === 'a_tiempo').length,
+      retraso: cleanRealPlanes.filter(r => r.estado === 'retraso').length,
+      no_entrego: syntheticNoEntrego.length,
+      semana_institucional: cleanRealPlanes.filter(r => r.estado === 'semana_institucional').length
     };
 
     res.json({
