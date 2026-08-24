@@ -73,7 +73,7 @@
         <div class="grid">
           
           <!-- Vista para Administrador: Listado de Docentes con botón Expediente de Planeaciones -->
-          <div class="card c12" id="adminDocentesCard" style="display: none;">
+          <div class="card c12" id="adminDocentesCard">
             
             <!-- Resumen de Cumplimiento Semanal -->
             <div id="adminWeeklySummary" style="background: var(--surface, #ffffff); border: 1px solid var(--border, #e2e8f0); border-radius: 14px; padding: 18px 22px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
@@ -148,7 +148,7 @@
           </div>
 
           <!-- Vista Formulario para Docentes -->
-          <div class="card c4" id="formCard">
+          <div class="card c4" id="formCard" style="display: none;">
             <h2 id="formTitle">Registrar Planeación</h2>
             <form id="planForm" onsubmit="savePlaneacion(event)">
               <input type="hidden" id="planId">
@@ -272,7 +272,7 @@
           </div>
 
           <!-- Planeaciones List para Docentes -->
-          <div class="card c8" id="listCard">
+          <div class="card c8" id="listCard" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
               <h2 style="margin: 0;">Mis Planeaciones Registradas</h2>
               <input type="text" id="searchPlaneaciones" placeholder="🔍 Buscar en mis planeaciones..." oninput="filterPlaneaciones()" style="max-width: 320px; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); outline: none; font-size: 13px;">
