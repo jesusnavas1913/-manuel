@@ -143,6 +143,7 @@ exports.getReporte = async (req, res) => {
     const totalPages = Math.ceil(totalCount / limit) || 1;
 
     const stats = {
+      total_subidas_reales: cleanRealPlanes.length,
       a_tiempo: allRecords.filter(r => r.estado === 'a_tiempo').length,
       retraso: allRecords.filter(r => r.estado === 'retraso').length,
       no_entrego: allRecords.filter(r => r.estado === 'no_entrego').length,

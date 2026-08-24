@@ -125,10 +125,11 @@ function applyLocalSort() {
 }
 
 function updateLiveStats() {
-  const statTotalEl = document.getElementById('statTotal');
-  if (statTotalEl) statTotalEl.textContent = totalItems;
-
+  const statSubidasEl = document.getElementById('statSubidasReales');
+  
   if (globalStats) {
+    if (statSubidasEl) statSubidasEl.textContent = globalStats.total_subidas_reales || 0;
+
     const statATiempoEl = document.getElementById('statATiempo');
     if (statATiempoEl) statATiempoEl.textContent = globalStats.a_tiempo || 0;
 
@@ -138,12 +139,15 @@ function updateLiveStats() {
     const statNoEntregoEl = document.getElementById('statNoEntrego');
     if (statNoEntregoEl) statNoEntregoEl.textContent = globalStats.no_entrego || 0;
   } else {
-    let aTiempo = 0, retraso = 0, noEntrego = 0;
+    let subidas = 0, aTiempo = 0, retraso = 0, noEntrego = 0;
     reportRows.forEach(r => {
+      if (r.estado !== 'no_entrego') subidas++;
       if (r.estado === 'a_tiempo') aTiempo++;
       else if (r.estado === 'retraso') retraso++;
       else noEntrego++;
     });
+
+    if (statSubidasEl) statSubidasEl.textContent = subidas;
 
     const statATiempoEl = document.getElementById('statATiempo');
     if (statATiempoEl) statATiempoEl.textContent = aTiempo;
