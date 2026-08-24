@@ -8,10 +8,11 @@ module.exports = (req, res, next) => {
   if (!token) return res.status(401).json({ error: 'Token malformado' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const secret = process.env.JWT_SECRET || 'sigep_ieg_secret_key_2026_super_secure';
+    const decoded = jwt.verify(token, secret);
     req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
     return res.status(401).json({ error: 'Token inválido o expirado' });
   }
 };
