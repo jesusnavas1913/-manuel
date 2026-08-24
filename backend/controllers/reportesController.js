@@ -142,9 +142,17 @@ exports.getReporte = async (req, res) => {
 
     const totalPages = Math.ceil(totalCount / limit) || 1;
 
+    const stats = {
+      a_tiempo: allRecords.filter(r => r.estado === 'a_tiempo').length,
+      retraso: allRecords.filter(r => r.estado === 'retraso').length,
+      no_entrego: allRecords.filter(r => r.estado === 'no_entrego').length,
+      semana_institucional: allRecords.filter(r => r.estado === 'semana_institucional').length
+    };
+
     res.json({
       data: mapped,
       total: totalCount,
+      stats,
       page,
       totalPages
     });

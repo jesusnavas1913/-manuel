@@ -2,6 +2,7 @@ let reportRows = [];
 let currentPage = 1;
 let totalPages = 1;
 let totalItems = 0;
+let globalStats = null;
 
 // Sort logic requires server implementation in backend, or local sort.
 // For now we will sort locally on the current page data.
@@ -67,6 +68,7 @@ async function fetchReport(page = 1) {
     reportRows = res.data || [];
     totalPages = res.totalPages || 1;
     totalItems = res.total || 0;
+    globalStats = res.stats || null;
 
     // Búsqueda en texto para la página actual
     const qSearch = (document.getElementById('fSearch').value || '').toLowerCase().trim();
@@ -123,27 +125,35 @@ function applyLocalSort() {
 }
 
 function updateLiveStats() {
-  // Calculamos las estadísticas solo para los elementos de la página actual 
-  // (ya que las estadísticas globales requerirían otra llamada al backend).
-  let aTiempo = 0, retraso = 0, noEntrego = 0;
-  reportRows.forEach(r => {
-    if (r.estado === 'a_tiempo') aTiempo++;
-    else if (r.estado === 'retraso') retraso++;
-    else noEntrego++;
-  });
-  const currentTotal = reportRows.length;
-
   const statTotalEl = document.getElementById('statTotal');
-  if (statTotalEl) statTotalEl.textContent = totalItems + " (Todos)";
+  if (statTotalEl) statTotalEl.textContent = totalItems;
 
-  const statATiempoEl = document.getElementById('statATiempo');
-  if (statATiempoEl) statATiempoEl.textContent = `${aTiempo} (en pág)`;
+  if (globalStats) {
+    const statATiempoEl = document.getElementById('statATiempo');
+    if (statATiempoEl) statATiempoEl.textContent = globalStats.a_tiempo || 0;
 
-  const statRetrasoEl = document.getElementById('statRetraso');
-  if (statRetrasoEl) statRetrasoEl.textContent = `${retraso} (en pág)`;
+    const statRetrasoEl = document.getElementById('statRetraso');
+    if (statRetrasoEl) statRetrasoEl.textContent = globalStats.retraso || 0;
 
-  const statNoEntregoEl = document.getElementById('statNoEntrego');
-  if (statNoEntregoEl) statNoEntregoEl.textContent = `${noEntrego} (en pág)`;
+    const statNoEntregoEl = document.getElementById('statNoEntrego');
+    if (statNoEntregoEl) statNoEntregoEl.textContent = globalStats.no_entrego || 0;
+  } else {
+    let aTiempo = 0, retraso = 0, noEntrego = 0;
+    reportRows.forEach(r => {
+      if (r.estado === 'a_tiempo') aTiempo++;
+      else if (r.estado === 'retraso') retraso++;
+      else noEntrego++;
+    });
+
+    const statATiempoEl = document.getElementById('statATiempo');
+    if (statATiempoEl) statATiempoEl.textContent = aTiempo;
+
+    const statRetrasoEl = document.getElementById('statRetraso');
+    if (statRetrasoEl) statRetrasoEl.textContent = retraso;
+
+    const statNoEntregoEl = document.getElementById('statNoEntrego');
+    if (statNoEntregoEl) statNoEntregoEl.textContent = noEntrego;
+  }
 }
 
 function updateFilterChips() {
