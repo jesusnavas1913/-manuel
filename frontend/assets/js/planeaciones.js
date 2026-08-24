@@ -293,9 +293,6 @@ function onSemanaDocenteChange(val) {
     updateAutoSemanaHelper();
   }
 }
-    updateAutoSemanaHelper();
-  }
-}
 
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
