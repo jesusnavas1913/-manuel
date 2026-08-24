@@ -129,13 +129,8 @@ async function initPlaneacionesPage() {
     if (listCard) listCard.style.display = 'none';
     if (adminDocentesCard) adminDocentesCard.style.display = 'block';
 
-    try {
-      await loadDocentesSelect();
-    } catch (e) { console.warn('Error select docentes:', e); }
-
-    try {
-      await loadAdminDocentes();
-    } catch (e) { console.error('Error cargando docentes admin:', e); }
+    populateAdminWeekSelect();
+    updateAdminWeeklySummary();
 
     const urlParams = new URLSearchParams(window.location.search);
     const filterParam = urlParams.get('filter');
@@ -143,6 +138,10 @@ async function initPlaneacionesPage() {
       currentAdminDocenteFilter = filterParam;
       setAdminDocenteFilter(filterParam);
     }
+
+    try {
+      await loadAdminDocentes();
+    } catch (e) { console.error('Error cargando docentes admin:', e); }
   } else {
     // Docente: Mostrar formulario para registrar y tabla con sus planeaciones
     if (adminDocentesCard) adminDocentesCard.style.display = 'none';
@@ -295,18 +294,20 @@ const EVALUACION_INICIO_SEMANA = 32;
 
 async function loadAdminDocentes() {
   try {
-    try {
-      adminDocentesData = await API.Docentes.getAll();
-    } catch (e) {
-      console.error('Error al obtener lista de docentes:', e);
-      adminDocentesData = [];
-    }
+    const [docs, plans] = await Promise.all([
+      API.Docentes.getAll().catch(e => { console.error('Error docentes:', e); return []; }),
+      API.Planeaciones.getAll().catch(e => { console.error('Error planeaciones:', e); return []; })
+    ]);
 
-    try {
-      allPlaneaciones = await API.Planeaciones.getAll();
-    } catch (e) {
-      console.error('Error al obtener planeaciones:', e);
-      allPlaneaciones = [];
+    adminDocentesData = Array.isArray(docs) ? docs : [];
+    docentesList = adminDocentesData;
+    allPlaneaciones = Array.isArray(plans) ? plans : [];
+
+    // Llenar select de docentes en segundo plano para el modal
+    const sel = document.getElementById('docenteId');
+    if (sel && docentesList.length > 0) {
+      sel.innerHTML = '<option value="">Seleccione docente...</option>' + 
+        docentesList.map(d => `<option value="${d.id}">${d.nombre} (${d.sede_nombre || 'Sin Sede'})</option>`).join('');
     }
 
     populateAdminWeekSelect();
