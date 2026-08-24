@@ -471,8 +471,8 @@ function renderAdminDocentes(list = adminDocentesData) {
   const targetW = selectedAdminWeek || weekNumber(new Date());
 
   tbody.innerHTML = list.map(d => {
-    const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
-    const gradosTags = d.grados ? d.grados.split(', ').map(g => `<span class="badge-grade" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(245,158,11,0.15); color:#f59e0b; border-radius:6px;">${g}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin grados</span>';
+    const areasTags = d.areas ? d.areas.split(/[,;]+/).map(s => s.trim()).filter(Boolean).map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
+    const gradosTags = d.grados ? d.grados.split(/[,;]+/).map(s => s.trim()).filter(Boolean).map(g => `<span class="badge-grade" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(245,158,11,0.15); color:#f59e0b; border-radius:6px;">${g}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin grados</span>';
     
     const stats = getDocenteComplianceStats(d.id, targetW);
 
