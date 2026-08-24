@@ -350,9 +350,14 @@ function renderAdminDocentes(list = adminDocentesData) {
     
     const stats = getDocenteComplianceStats(d.id, targetW);
 
-    const statusSemanaHtml = stats.hasTargetWeekDelivery
-      ? `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span><br><small style="color:var(--text-muted); font-size:11px;">Total subidas: <strong>${stats.totalSubidas}</strong> · Cumplimiento: ${stats.pctCumplimiento}%</small>`
-      : `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin entrega (Sem ${targetW})</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.slice(0, 4).map(w => `Sem ${w}`).join(', ')}${stats.missingWeeks.length > 4 ? '...' : ''}</small>`;
+    let statusSemanaHtml = '';
+    if (stats.missingWeeks.length === 0) {
+      statusSemanaHtml = `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Al día (Sem ${targetW})</span><br><small style="color:var(--text-muted); font-size:11px;">Al día en todas las semanas (${stats.startW}-${targetW}) · Subidas: <strong>${stats.totalSubidas}</strong></small>`;
+    } else if (stats.hasTargetWeekDelivery) {
+      statusSemanaHtml = `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span><br><small style="color:#f59e0b; font-size:11px; font-weight:600;">Debe anteriores: ${stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}</small>`;
+    } else {
+      statusSemanaHtml = `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 Sin entrega (Sem ${targetW})</span><br><small style="color:#ef4444; font-size:11px; font-weight:600;">Faltan: ${stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}</small>`;
+    }
 
     const currentUser = Storage.getUser();
     const isOnline = currentUser && (
