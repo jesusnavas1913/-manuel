@@ -254,8 +254,8 @@ function populateDocenteWeekSelect() {
   const defaultW = currentW;
 
   let optionsHtml = '';
-  // Solo semana actual y semanas traseras/anteriores (sin semanas siguientes)
-  for (let w = currentW; w >= 1; w--) {
+  // Solo semana actual y semanas traseras/anteriores (límite inferior semana 32)
+  for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
     let label = `Semana ${w}`;
     if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
@@ -330,11 +330,11 @@ function populateAdminWeekSelect() {
   const sel = document.getElementById('selAdminWeek');
   if (!sel) return;
 
-  const currentW = getCurrentAcademicWeek(new Date());
+  const currentW = Math.max(35, getCurrentAcademicWeek(new Date()));
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
-  for (let w = 52; w >= 1; w--) {
+  for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
     const isSel = w === selectedAdminWeek;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
