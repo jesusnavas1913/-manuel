@@ -985,7 +985,24 @@ function startLiveClock() {
   if (!el) return;
   const update = () => {
     const now = new Date();
-    el.innerText = now.toLocaleDateString('es-CO', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) + ' · ' + now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    try {
+      const colFormatter = new Intl.DateTimeFormat('es-CO', {
+        timeZone: 'America/Bogota',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+      let str = colFormatter.format(now);
+      str = str.replace(/a\.\s*m\./i, 'AM').replace(/p\.\s*m\./i, 'PM');
+      el.innerText = str + ' (Hora Col)';
+    } catch (e) {
+      el.innerText = now.toLocaleDateString('es-CO') + ' · ' + now.toLocaleTimeString('es-CO');
+    }
   };
   update();
   setInterval(update, 1000);

@@ -209,18 +209,31 @@ function fmtDate(isoStr) {
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return isoStr;
 
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-
-  let hours = d.getHours();
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  hours = hours ? hours : 12;
-  const hh = String(hours).padStart(2, '0');
-
-  return `${dd}/${mm}/${yyyy}, ${hh}:${minutes} ${ampm}`;
+  try {
+    const formatter = new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    let formatted = formatter.format(d);
+    formatted = formatted.replace(/a\.\s*m\./i, 'AM').replace(/p\.\s*m\./i, 'PM');
+    return formatted;
+  } catch (e) {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const hh = String(hours).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy}, ${hh}:${minutes} ${ampm}`;
+  }
 }
 
 function badge(status) {
