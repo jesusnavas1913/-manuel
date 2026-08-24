@@ -291,16 +291,30 @@ function onSemanaDocenteChange(val) {
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
 let selectedAdminWeek = getCurrentAcademicWeek(new Date());
+const EVALUACION_INICIO_SEMANA = 32;
 
 async function loadAdminDocentes() {
   try {
-    adminDocentesData = await API.Docentes.getAll();
-    allPlaneaciones = await API.Planeaciones.getAll();
+    try {
+      adminDocentesData = await API.Docentes.getAll();
+    } catch (e) {
+      console.error('Error al obtener lista de docentes:', e);
+      adminDocentesData = [];
+    }
+
+    try {
+      allPlaneaciones = await API.Planeaciones.getAll();
+    } catch (e) {
+      console.error('Error al obtener planeaciones:', e);
+      allPlaneaciones = [];
+    }
+
     populateAdminWeekSelect();
     updateAdminWeeklySummary();
     filterAdminDocentes();
   } catch (err) {
-    showToast('Error al obtener lista de docentes', 'error');
+    console.error('Error en loadAdminDocentes:', err);
+    renderAdminDocentes(adminDocentesData || []);
   }
 }
 
@@ -312,8 +326,7 @@ function populateAdminWeekSelect() {
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
-  const maxW = Math.max(currentW, 32);
-  for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
+  for (let w = 52; w >= 1; w--) {
     const isCur = w === currentW;
     const isSel = w === selectedAdminWeek;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
@@ -339,8 +352,8 @@ function updateAdminWeeklySummary() {
   let okCount = 0;
   let pendingCount = 0;
 
-  adminDocentesData.forEach(d => {
-    const deliveredCount = allPlaneaciones.filter(p => 
+  (adminDocentesData || []).forEach(d => {
+    const deliveredCount = (allPlaneaciones || []).filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
@@ -372,11 +385,11 @@ function setAdminDocenteFilter(filterType) {
 }
 
 function filterAdminDocentes() {
-  const q = (document.getElementById('searchAdminDocentes').value || '').toLowerCase().trim();
+  const q = (document.getElementById('searchAdminDocentes')?.value || '').toLowerCase().trim();
   const targetW = selectedAdminWeek || weekNumber(new Date());
 
-  let list = adminDocentesData.filter(d => {
-    const deliveredCount = allPlaneaciones.filter(p => 
+  let list = (adminDocentesData || []).filter(d => {
+    const deliveredCount = (allPlaneaciones || []).filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
@@ -404,23 +417,22 @@ function filterAdminDocentes() {
 
 function getDocenteComplianceStats(docenteId, targetWeek) {
   const MIN_REQUERIDO = 1;
-  const docPlans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
-  const validPlans = docPlans.filter(p => p.estado !== 'no_entrego' && parseInt(p.numero_semana) >= MIN_SEMANA_LECTIVA);
+  const docPlans = (allPlaneaciones || []).filter(p => String(p.docente_id) === String(docenteId));
+  const validPlans = docPlans.filter(p => p.estado !== 'no_entrego');
   const totalSubidas = validPlans.length;
 
   const weekCounts = {};
   validPlans.forEach(p => {
     const w = parseInt(p.numero_semana);
-    if (w && w >= MIN_SEMANA_LECTIVA) weekCounts[w] = (weekCounts[w] || 0) + 1;
+    if (w) weekCounts[w] = (weekCounts[w] || 0) + 1;
   });
 
   const deliveredWeeks = Object.keys(weekCounts)
     .map(Number)
-    .filter(w => w >= MIN_SEMANA_LECTIVA && weekCounts[w] >= MIN_REQUERIDO)
+    .filter(w => weekCounts[w] >= MIN_REQUERIDO)
     .sort((a, b) => a - b);
 
-  // El sistema SIGEP inició estrictamente en la Semana 32. Jamás evaluar semanas < 32.
-  const startW = MIN_SEMANA_LECTIVA;
+  const startW = Math.min(EVALUACION_INICIO_SEMANA, targetWeek);
 
   const missingWeeks = [];
   for (let w = startW; w <= targetWeek; w++) {
