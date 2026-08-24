@@ -51,28 +51,34 @@ exports.getReporte = async (req, res) => {
       }
     });
 
-    // 3. Generar entregas sintéticas de 'no_entrego' ÚNICAMENTE si se filtra por estado 'no_entrego'
+    // 3. Generar entregas sintéticas de 'no_entrego' agrupadas por docente si se filtra por estado 'no_entrego'
     const syntheticNoEntrego = [];
     if (estado === 'no_entrego') {
       (allDocentes || []).forEach(d => {
+        const missingWeeks = [];
         for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
           if (w < MIN_SEMANA_LECTIVA) continue;
           const key = `${d.id}_${w}`;
           if (!realPlansMap.has(key)) {
-            syntheticNoEntrego.push({
-              id: `synthetic_no_${d.id}_sem${w}`,
-              docente_id: d.id,
-              docentes: d,
-              area: d.areas ? d.areas.split(',')[0] : 'General',
-              grado: d.grados ? d.grados.split(',')[0] : 'Sin Grado',
-              numero_semana: w,
-              fecha_subida: null,
-              fecha_aplicacion: null,
-              nombre_archivo: null,
-              observaciones: 'Registro automático: Pendiente de entrega en la plataforma SIGEP',
-              estado: 'no_entrego'
-            });
+            missingWeeks.push(w);
           }
+        }
+
+        if (missingWeeks.length > 0) {
+          syntheticNoEntrego.push({
+            id: `synthetic_no_${d.id}`,
+            docente_id: d.id,
+            docentes: d,
+            area: d.areas ? d.areas.split(',')[0].trim() : 'General',
+            grado: d.grados ? d.grados.split(',')[0].trim() : '--',
+            numero_semana: missingWeeks.map(w => `Sem ${w}`).join(', '),
+            missing_count: missingWeeks.length,
+            fecha_subida: null,
+            fecha_aplicacion: null,
+            nombre_archivo: null,
+            observaciones: `Debe ${missingWeeks.length} semana(s): ${missingWeeks.map(w => 'Sem ' + w).join(', ')}`,
+            estado: 'no_entrego'
+          });
         }
       });
     }

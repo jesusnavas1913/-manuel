@@ -206,29 +206,44 @@ function renderReport() {
   const tbody = document.getElementById('reportTableBody');
 
   if (!reportRows || reportRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 20px;">No se encontraron registros con los filtros seleccionados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 20px;">No se encontraron registros con los filtros seleccionados</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = reportRows.map(r => `
+  tbody.innerHTML = reportRows.map(r => {
+    const isNoEntrego = r.estado === 'no_entrego';
+    
+    let semanaHtml = '';
+    if (isNoEntrego) {
+      semanaHtml = `<span style="background:rgba(239,68,68,0.15); color:#ef4444; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11.5px;">${r.numero_semana || '-'}</span>`;
+    } else {
+      semanaHtml = `Semana ${r.numero_semana || '-'}`;
+    }
+
+    const estadoHtml = isNoEntrego
+      ? `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 No entregó ${r.missing_count ? `(${r.missing_count} sem)` : ''}</span>`
+      : badge(r.estado);
+
+    return `
     <tr>
       <td><strong>${r.docente_nombre || '-'}</strong></td>
-      <td>${r.docente_doc || '-'}</td>
+      <td>${r.docente_doc || '--'}</td>
       <td>${r.sede_nombre || '-'}</td>
       <td>${r.jornada_nombre || '-'}</td>
       <td>${r.area || '-'}</td>
-      <td>${r.grado || '-'}</td>
-      <td>Semana ${r.numero_semana || '-'}</td>
-      <td>${fmtDate(r.fecha_subida)}</td>
-      <td>${badge(r.estado)}</td>
+      <td>${r.grado || '--'}</td>
+      <td>${semanaHtml}</td>
+      <td>${r.fecha_subida ? fmtDate(r.fecha_subida) : '-'}</td>
+      <td>${estadoHtml}</td>
       <td style="white-space: nowrap;">
         ${r.nombre_archivo ? `
           <button type="button" class="btn btn-primary btn-sm" style="padding:3px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="previewPdfModal(${r.id})">📄 Ver</button>
           <a href="${API_BASE}/planeaciones/${r.id}/descargar" target="_blank" class="btn btn-success btn-sm" style="padding:3px 8px; font-size:11px; background:#10b981; color:#fff; text-decoration:none; display:inline-block;">📥 Descargar</a>
-        ` : `<code>-</code>`}
+        ` : `<span style="color:var(--text-muted); font-size:11px;">Sin archivo</span>`}
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function getPdfUrlReportes(r) {
