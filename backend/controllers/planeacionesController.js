@@ -208,15 +208,16 @@ exports.create = async (req, res) => {
 
   // Manejo de archivo con Multer & Supabase Storage
   if (req.file) {
-    const isPdf = req.file.mimetype === 'application/pdf' || 
-                  req.file.mimetype === 'application/x-pdf' || 
-                  (req.file.originalname && req.file.originalname.toLowerCase().endsWith('.pdf'));
-    if (!isPdf) {
+    const origName = (req.file.originalname || '').toLowerCase();
+    const isPdf = origName.endsWith('.pdf') || 
+                  (req.file.mimetype && req.file.mimetype.toLowerCase().includes('pdf')) ||
+                  req.file.mimetype === 'application/octet-stream';
+    if (!isPdf && !origName.endsWith('.pdf')) {
       return res.status(400).json({ error: 'Únicamente se permiten archivos en formato PDF (.pdf)' });
     }
 
     try {
-      nombre_archivo = await uploadPdfToStorage(req.file.buffer, req.file.originalname);
+      nombre_archivo = await uploadPdfToStorage(req.file.buffer, req.file.originalname || 'planeacion.pdf');
     } catch (upErr) {
       return res.status(500).json({ error: upErr.message });
     }
@@ -228,16 +229,6 @@ exports.create = async (req, res) => {
     const ahora = new Date();
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
-    const semanaActual = semanaISO(ahora);
-
-    // RESTRICCIÓN DE SEGURIDAD: Los docentes pueden registrar la semana en curso o máximo 1 semana en adelante (semanaActual + 1) de lunes a domingo.
-    const maxSemanaDocente = semanaActual + 1;
-
-    if (req.user.rol === 'docente' && semana > maxSemanaDocente) {
-      return res.status(400).json({ 
-        error: `Por motivos de seguridad, los docentes no pueden ingresar planeaciones con más de una semana de antelación (Máximo Semana ${maxSemanaDocente}).` 
-      });
-    }
 
     const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);

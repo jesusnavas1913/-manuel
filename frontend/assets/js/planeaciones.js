@@ -1,5 +1,115 @@
 let docentesList = [];
 
+const ALL_COLOMBIAN_AREAS = [
+  'Matemáticas',
+  'Humanidades y Lengua Castellana',
+  'Idioma Extranjero (Inglés)',
+  'Ciencias Naturales y Ed. Ambiental',
+  'Física',
+  'Química',
+  'Biología',
+  'Ciencias Sociales, Historia y Geografía',
+  'Constitución Política y Cátedra de la Paz',
+  'Educación Artística y Cultural',
+  'Educación Física, Recreación y Deportes',
+  'Educación Ética y en Valores Humanos',
+  'Educación Religiosa',
+  'Tecnología e Informática',
+  'Filosofía',
+  'Ciencias Económicas y Políticas',
+  'Cátedra de Estudios Afrocolombianos',
+  'Lectura Crítica'
+];
+
+const ALL_COLOMBIAN_GRADES = [
+  'Prejardín', 'Jardín', 'Transición',
+  '1°', '2°', '3°', '4°', '5°',
+  '6°', '7°', '8°', '9°',
+  '10°', '11°'
+];
+
+async function populateDocenteAreasAndGrados() {
+  const user = Storage.getUser();
+  const areaSelect = document.getElementById('area');
+  const gradoSelect = document.getElementById('grado');
+  if (!areaSelect || !gradoSelect) return;
+
+  let assignedAreas = [];
+  let assignedGrados = [];
+
+  if (user) {
+    try {
+      if (!docentesList || docentesList.length === 0) {
+        docentesList = await API.Docentes.getAll();
+      }
+      const did = user.docente_id;
+      const userMail = (user.correo || '').toLowerCase().trim();
+      const userName = (user.nombre || '').toLowerCase().trim();
+
+      let myDoc = docentesList.find(d => did && String(d.id) === String(did));
+      if (!myDoc && userMail) {
+        myDoc = docentesList.find(d => d.correo && d.correo.toLowerCase().trim() === userMail);
+      }
+      if (!myDoc && userName) {
+        myDoc = docentesList.find(d => d.nombre && d.nombre.toLowerCase().trim() === userName);
+      }
+
+      if (myDoc) {
+        if (myDoc.areas) assignedAreas = myDoc.areas.split(',').map(s => s.trim()).filter(Boolean);
+        if (myDoc.grados) assignedGrados = myDoc.grados.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } catch (e) {
+      console.warn('Error obteniendo asignaciones de docente:', e);
+    }
+  }
+
+  // Poblar áreas
+  let areaHtml = '<option value="">Seleccione el área o asignatura...</option>';
+  if (assignedAreas.length > 0) {
+    areaHtml += `<optgroup label="⭐ Mis Asignaturas Asignadas">`;
+    assignedAreas.forEach(a => {
+      areaHtml += `<option value="${a}">${a}</option>`;
+    });
+    areaHtml += `</optgroup>`;
+    const otherAreas = ALL_COLOMBIAN_AREAS.filter(a => !assignedAreas.includes(a));
+    if (otherAreas.length > 0) {
+      areaHtml += `<optgroup label="Otras Áreas Institucionales">`;
+      otherAreas.forEach(a => {
+        areaHtml += `<option value="${a}">${a}</option>`;
+      });
+      areaHtml += `</optgroup>`;
+    }
+  } else {
+    ALL_COLOMBIAN_AREAS.forEach(a => {
+      areaHtml += `<option value="${a}">${a}</option>`;
+    });
+  }
+  areaSelect.innerHTML = areaHtml;
+
+  // Poblar grados
+  let gradoHtml = '<option value="">Seleccione el grado académico...</option>';
+  if (assignedGrados.length > 0) {
+    gradoHtml += `<optgroup label="⭐ Mis Grados Asignados">`;
+    assignedGrados.forEach(g => {
+      gradoHtml += `<option value="${g}">${g}</option>`;
+    });
+    gradoHtml += `</optgroup>`;
+    const otherGrados = ALL_COLOMBIAN_GRADES.filter(g => !assignedGrados.includes(g));
+    if (otherGrados.length > 0) {
+      gradoHtml += `<optgroup label="Otros Grados">`;
+      otherGrados.forEach(g => {
+        gradoHtml += `<option value="${g}">${g}</option>`;
+      });
+      gradoHtml += `</optgroup>`;
+    }
+  } else {
+    ALL_COLOMBIAN_GRADES.forEach(g => {
+      gradoHtml += `<option value="${g}">${g}</option>`;
+    });
+  }
+  gradoSelect.innerHTML = gradoHtml;
+}
+
 async function initPlaneacionesPage() {
   startLiveClock();
   populateDocenteWeekSelect();
@@ -35,11 +145,12 @@ async function initPlaneacionesPage() {
     }
     const docenteGroup = document.getElementById('docenteGroup');
     if (docenteGroup) docenteGroup.style.display = 'none';
+    await populateDocenteAreasAndGrados();
     await loadPlaneaciones();
   }
 }
 
-const MIN_SEMANA_LECTIVA = 32; // La implementación institucional del sistema SIGEP inició en la Semana 32
+const MIN_SEMANA_LECTIVA = 1; // Habilitar semanas completas del año escolar
 const SUPABASE_STORAGE_BUCKET_URL = 'https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/planeaciones_pdfs';
 const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1bHJic2FveHd1aWJzbGZobGVmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTMzNDAyMSwiZXhwIjoyMTAwOTEwMDIxfQ.MsQ9sTKtvodOT_gY2z3C1UeQQJJu8YqCs9RkRKATOOc';
 
@@ -126,18 +237,15 @@ function populateDocenteWeekSelect() {
 
   const now = new Date();
   const currentW = getCurrentAcademicWeek(now);
-  const user = Storage.getUser();
-  // Para docente: permite desde la semana actual hasta la semana siguiente (currentW + 1) de lunes a domingo
-  const maxW = (user && user.rol === 'docente') ? currentW + 1 : currentW + 1;
   const defaultW = currentW;
 
   let optionsHtml = '';
-  for (let w = maxW; w >= MIN_SEMANA_LECTIVA; w--) {
+  for (let w = 52; w >= 1; w--) {
     const isNext = w === currentW + 1;
     const isCur = w === currentW;
-    let label = `Semana ${w} (Semana Anterior)`;
-    if (isNext) label = `Semana ${w} (Semana Siguiente - La Semana Que Viene)`;
-    else if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
+    let label = `Semana ${w}`;
+    if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
+    else if (isNext) label = `Semana ${w} (Semana Siguiente)`;
 
     const isSel = w === defaultW;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;
@@ -149,16 +257,6 @@ function populateDocenteWeekSelect() {
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
     dateInput.value = mondayDefaultStr;
-
-    if (user && user.rol === 'docente') {
-      const mondayMaxStr = getMondayOfISOWeek(maxW);
-      const sundayMax = parseLocalDate(mondayMaxStr);
-      sundayMax.setDate(sundayMax.getDate() + 6);
-      const sY = sundayMax.getFullYear();
-      const sM = String(sundayMax.getMonth() + 1).padStart(2, '0');
-      const sD = String(sundayMax.getDate()).padStart(2, '0');
-      dateInput.max = `${sY}-${sM}-${sD}`;
-    }
     updateAutoSemanaHelper();
   }
 }
@@ -857,9 +955,6 @@ function updateAutoSemanaHelper() {
   const w = weekNumber(dateObj);
   const now = new Date();
   const currentW = weekNumber(now);
-  const dayNow = now.getDay();
-  const isWeekend = (dayNow === 0 || dayNow === 6 || (dayNow === 5 && now.getHours() >= 18));
-  const user = Storage.getUser();
 
   // Sincronizar el selector selSemanaDocente si existe
   const selDoc = document.getElementById('selSemanaDocente');
@@ -872,14 +967,8 @@ function updateAutoSemanaHelper() {
     statusBadge = `<span style="background:rgba(217,119,6,0.18); color:#d97706; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟡 Entrega Atrasada (Se registrará Con Retraso)</span>`;
   } else if (w === currentW) {
     statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Actual (Entrega A Tiempo)</span>`;
-  } else if (w === currentW + 1) {
-    statusBadge = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🟢 Semana Siguiente / La Que Viene (Entrega Habilitada)</span>`;
   } else {
-    if (user && user.rol === 'docente') {
-      statusBadge = `<span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🚫 RESTRICCIÓN DE SEGURIDAD: No se permiten planeaciones a más de 1 semana de antelación (Máximo Semana ${currentW + 1})</span>`;
-    } else {
-      statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Adelantada (Modo Admin)</span>`;
-    }
+    statusBadge = `<span style="background:rgba(56,189,248,0.18); color:#0284c7; padding:2px 8px; border-radius:10px; font-weight:700; font-size:11px;">🔵 Semana Futura (Semana ${w})</span>`;
   }
 
   if (helper) {
@@ -1321,8 +1410,8 @@ async function savePlaneacion(e) {
   }
 
   if (file) {
-    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-    if (!isPdf) {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || (file.type && file.type.toLowerCase().includes('pdf'));
+    if (!isPdf && !file.name.toLowerCase().endsWith('.pdf')) {
       showToast('Únicamente se aceptan archivos en formato PDF (.pdf)', 'error');
       return;
     }
@@ -1338,14 +1427,6 @@ async function savePlaneacion(e) {
   const obsFinal = userObs ? `[Duración: ${duracion} clase(s)] ${userObs}` : `[Duración: ${duracion} clase(s)]`;
   const fechaApp = parseLocalDate(fechaAppStr);
   const autoSemana = parseInt(document.getElementById('selSemanaDocente')?.value) || weekNumber(fechaApp);
-  const now = new Date();
-  const currentSemana = weekNumber(now);
-  const maxSemanaPermitida = currentSemana + 1;
-
-  if (user && user.rol === 'docente' && autoSemana > maxSemanaPermitida) {
-    showToast(`⚠️ Por motivos de seguridad de software, no se permite registrar planeaciones con más de 1 semana de antelación (Máximo Semana ${maxSemanaPermitida}).`, 'error');
-    return;
-  }
 
   const btn = document.getElementById('btnSubmitPlan');
   if (btn) { btn.disabled = true; btn.innerText = '⏳ Subiendo archivo PDF...'; }
@@ -1460,7 +1541,7 @@ async function openAdminUploadModal(preselectedDocenteId = null) {
   }).join('');
 
   let weekOptionsHtml = '';
-  for (let w = currentW + 2; w >= MIN_SEMANA_LECTIVA; w--) {
+  for (let w = 52; w >= 1; w--) {
     const isCur = w === currentW;
     weekOptionsHtml += `<option value="${w}" ${isCur ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
   }
@@ -1477,7 +1558,7 @@ async function openAdminUploadModal(preselectedDocenteId = null) {
       <form id="adminUploadForm" onsubmit="saveAdminModalPlaneacion(event)" style="padding:22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:14px;">
         <div>
           <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Docente asignado *</label>
-          <select id="adminModalDocenteId" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
+          <select id="adminModalDocenteId" required onchange="onAdminModalDocenteChange(this.value)" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
             <option value="">-- Seleccione un docente --</option>
             ${docOptionsHtml}
           </select>
@@ -1488,43 +1569,14 @@ async function openAdminUploadModal(preselectedDocenteId = null) {
             <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Área / Asignatura *</label>
             <select id="adminModalArea" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
               <option value="">Seleccione área...</option>
-              <option value="Matemáticas">Matemáticas</option>
-              <option value="Humanidades y Lengua Castellana">Humanidades y Lengua Castellana</option>
-              <option value="Idioma Extranjero (Inglés)">Idioma Extranjero (Inglés)</option>
-              <option value="Ciencias Naturales y Ed. Ambiental">Ciencias Naturales y Ed. Ambiental</option>
-              <option value="Física">Física</option>
-              <option value="Química">Química</option>
-              <option value="Biología">Biología</option>
-              <option value="Ciencias Sociales, Historia y Geografía">Ciencias Sociales, Historia y Geografía</option>
-              <option value="Constitución Política y Cátedra de la Paz">Constitución Política y Cátedra de la Paz</option>
-              <option value="Educación Artística y Cultural">Educación Artística y Cultural</option>
-              <option value="Educación Física, Recreación y Deportes">Educación Física, Recreación y Deportes</option>
-              <option value="Educación Ética y en Valores Humanos">Educación Ética y en Valores Humanos</option>
-              <option value="Educación Religiosa">Educación Religiosa</option>
-              <option value="Tecnología e Informática">Tecnología e Informática</option>
-              <option value="Filosofía">Filosofía</option>
-              <option value="Ciencias Económicas y Políticas">Ciencias Económicas y Políticas</option>
-              <option value="Lectura Crítica">Lectura Crítica</option>
+              ${ALL_COLOMBIAN_AREAS.map(a => `<option value="${a}">${a}</option>`).join('')}
             </select>
           </div>
           <div>
             <label style="display:block; font-size:12.5px; font-weight:700; margin-bottom:4px; color:var(--text-main);">Grado Académico *</label>
             <select id="adminModalGrado" required style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border, #334155); background:var(--bg, #0f172a); color:var(--text-main); font-size:13px;">
               <option value="">Seleccione grado...</option>
-              <option value="Prejardín">Prejardín</option>
-              <option value="Jardín">Jardín</option>
-              <option value="Transición">Transición</option>
-              <option value="1°">1° Primaria</option>
-              <option value="2°">2° Primaria</option>
-              <option value="3°">3° Primaria</option>
-              <option value="4°">4° Primaria</option>
-              <option value="5°">5° Primaria</option>
-              <option value="6°">6° Secundaria</option>
-              <option value="7°">7° Secundaria</option>
-              <option value="8°">8° Secundaria</option>
-              <option value="9°">9° Secundaria</option>
-              <option value="10°">10° Media Technical</option>
-              <option value="11°">11° Media Technical</option>
+              ${ALL_COLOMBIAN_GRADES.map(g => `<option value="${g}">${g}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -1574,6 +1626,69 @@ async function openAdminUploadModal(preselectedDocenteId = null) {
   `;
 
   document.body.appendChild(modal);
+  if (preselectedDocenteId) {
+    onAdminModalDocenteChange(preselectedDocenteId);
+  }
+}
+
+function onAdminModalDocenteChange(docId) {
+  const areaSel = document.getElementById('adminModalArea');
+  const gradSel = document.getElementById('adminModalGrado');
+  if (!areaSel || !gradSel) return;
+
+  const doc = (docentesList || []).find(d => String(d.id) === String(docId));
+  let assignedAreas = [];
+  let assignedGrados = [];
+  if (doc) {
+    if (doc.areas) assignedAreas = doc.areas.split(',').map(s => s.trim()).filter(Boolean);
+    if (doc.grados) assignedGrados = doc.grados.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  // Update Area
+  let areaHtml = '<option value="">Seleccione área...</option>';
+  if (assignedAreas.length > 0) {
+    areaHtml += `<optgroup label="⭐ Asignaturas Asignadas al Docente">`;
+    assignedAreas.forEach(a => {
+      areaHtml += `<option value="${a}">${a}</option>`;
+    });
+    areaHtml += `</optgroup>`;
+    const otherAreas = ALL_COLOMBIAN_AREAS.filter(a => !assignedAreas.includes(a));
+    if (otherAreas.length > 0) {
+      areaHtml += `<optgroup label="Otras Áreas">`;
+      otherAreas.forEach(a => {
+        areaHtml += `<option value="${a}">${a}</option>`;
+      });
+      areaHtml += `</optgroup>`;
+    }
+  } else {
+    ALL_COLOMBIAN_AREAS.forEach(a => {
+      areaHtml += `<option value="${a}">${a}</option>`;
+    });
+  }
+  areaSel.innerHTML = areaHtml;
+
+  // Update Grado
+  let gradoHtml = '<option value="">Seleccione grado...</option>';
+  if (assignedGrados.length > 0) {
+    gradoHtml += `<optgroup label="⭐ Grados Asignados al Docente">`;
+    assignedGrados.forEach(g => {
+      gradoHtml += `<option value="${g}">${g}</option>`;
+    });
+    gradoHtml += `</optgroup>`;
+    const otherGrados = ALL_COLOMBIAN_GRADES.filter(g => !assignedGrados.includes(g));
+    if (otherGrados.length > 0) {
+      gradoHtml += `<optgroup label="Otros Grados">`;
+      otherGrados.forEach(g => {
+        gradoHtml += `<option value="${g}">${g}</option>`;
+      });
+      gradoHtml += `</optgroup>`;
+    }
+  } else {
+    ALL_COLOMBIAN_GRADES.forEach(g => {
+      gradoHtml += `<option value="${g}">${g}</option>`;
+    });
+  }
+  gradSel.innerHTML = gradoHtml;
 }
 
 function onAdminModalSemanaChange(val) {
@@ -1618,10 +1733,12 @@ async function saveAdminModalPlaneacion(e) {
     return;
   }
 
-  const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-  if (!isPdf) {
-    showToast('⚠️ Únicamente se aceptan archivos en formato PDF (.pdf)', 'error');
-    return;
+  if (file) {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || (file.type && file.type.toLowerCase().includes('pdf'));
+    if (!isPdf && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('⚠️ Únicamente se aceptan archivos en formato PDF (.pdf)', 'error');
+      return;
+    }
   }
 
   if (file.size > 50 * 1024 * 1024) {
