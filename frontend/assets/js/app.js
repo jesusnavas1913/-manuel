@@ -208,13 +208,19 @@ function fmtDate(isoStr) {
   if (!isoStr) return '-';
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return isoStr;
-  return d.toLocaleDateString('es-CO', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const hh = String(hours).padStart(2, '0');
+
+  return `${dd}/${mm}/${yyyy}, ${hh}:${minutes} ${ampm}`;
 }
 
 function badge(status) {
