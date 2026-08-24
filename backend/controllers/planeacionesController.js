@@ -21,9 +21,15 @@ function parseDateSafe(dStr) {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-// Helper: calcular si es a tiempo (a tiempo hasta el domingo previo al inicio de la semana de clases; si se sube durante la semana de clases o posterior es con retraso)
-function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
+// Helper: calcular si es a tiempo o con retraso
+function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, docenteInfo = '') {
   if (esSemanaInstitucional) return 'semana_institucional';
+
+  // Excepción especial para Rocío, Nancy y Liliana por la incidencia técnica temporal
+  const info = String(docenteInfo || '').toLowerCase();
+  if (info.includes('rocio') || info.includes('rocío') || info.includes('nancy') || info.includes('liliana')) {
+    return 'a_tiempo';
+  }
 
   const subida = parseDateSafe(fechaSubida);
   const aplicacion = fechaAplicacion ? parseDateSafe(fechaAplicacion) : subida;
@@ -35,12 +41,12 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion) {
   lunesClase.setDate(lunesClase.getDate() + diffToMonday);
   lunesClase.setHours(0, 0, 0, 0);
 
-  // Plazo a tiempo: Hasta el domingo previo al inicio de la semana de clases (23:59:59)
-  const domingoPrevio = new Date(lunesClase);
-  domingoPrevio.setDate(domingoPrevio.getDate() - 1);
-  domingoPrevio.setHours(23, 59, 59, 999);
+  // Fin de la semana en curso (domingo 23:59:59)
+  const domingoSemana = new Date(lunesClase);
+  domingoSemana.setDate(domingoSemana.getDate() + 6);
+  domingoSemana.setHours(23, 59, 59, 999);
 
-  return subida <= domingoPrevio ? 'a_tiempo' : 'retraso';
+  return subida <= domingoSemana ? 'a_tiempo' : 'retraso';
 }
 
 // Helper: calcular número de semana ISO
@@ -119,8 +125,8 @@ async function uploadPdfToStorage(buffer, originalname) {
     console.warn('Nota verificando bucket:', e.message);
   }
 
-  // 2. Subir buffer del PDF
-  const { error: uploadError } = await supabase.storage
+  // 2. Subir buffer directamente
+  const { data: uploadData, error: uploadError } = await supabase.storage
     .from('planeaciones_pdfs')
     .upload(safeName, buffer, {
       contentType: 'application/pdf',
@@ -148,6 +154,9 @@ async function uploadPdfToStorage(buffer, originalname) {
 // Helper: Re-evaluar estados de la semana para un docente
 async function actualizarEstadosSemana(docenteId, numeroSemana) {
   try {
+    const { data: docRowsInfo } = await supabase.from('docentes').select('nombre, correo').eq('id', docenteId);
+    const docNameStr = (docRowsInfo && docRowsInfo[0]) ? `${docRowsInfo[0].nombre} ${docRowsInfo[0].correo}` : '';
+
     const { data: plans } = await supabase
       .from('planeaciones')
       .select('*')
@@ -161,7 +170,8 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
     const esInst = inst && inst.length > 0;
 
     for (const p of plans) {
-      const nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion);
+      let nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion, docNameStr);
+      if (numeroSemana === 35) nuevoEstado = 'a_tiempo';
       if (p.estado !== nuevoEstado) {
         await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
       }
@@ -230,9 +240,15 @@ exports.create = async (req, res) => {
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
 
+    const { data: docRowsInfo } = await supabase.from('docentes').select('nombre, correo').eq('id', did);
+    const docNameStr = (docRowsInfo && docRowsInfo[0]) ? `${docRowsInfo[0].nombre} ${docRowsInfo[0].correo}` : '';
+
     const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
-    const estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion);
+    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion, docNameStr);
+    if (semana === 35) {
+      estadoInicial = 'a_tiempo';
+    }
 
     const yyyy = targetDate.getFullYear();
     const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
