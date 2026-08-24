@@ -51,32 +51,34 @@ exports.getReporte = async (req, res) => {
       }
     });
 
-    // 3. Generar entregas sintéticas de 'no_entrego' para semanas no entregadas
+    // 3. Generar entregas sintéticas de 'no_entrego' ÚNICAMENTE si se filtra por estado 'no_entrego'
     const syntheticNoEntrego = [];
-    (allDocentes || []).forEach(d => {
-      for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
-        if (w < MIN_SEMANA_LECTIVA) continue;
-        const key = `${d.id}_${w}`;
-        if (!realPlansMap.has(key)) {
-          syntheticNoEntrego.push({
-            id: `synthetic_no_${d.id}_sem${w}`,
-            docente_id: d.id,
-            docentes: d,
-            area: d.areas ? d.areas.split(',')[0] : 'General',
-            grado: d.grados ? d.grados.split(',')[0] : 'Sin Grado',
-            numero_semana: w,
-            fecha_subida: null,
-            fecha_aplicacion: null,
-            nombre_archivo: null,
-            observaciones: 'Registro automático: Pendiente de entrega en la plataforma SIGEP',
-            estado: 'no_entrego'
-          });
+    if (estado === 'no_entrego') {
+      (allDocentes || []).forEach(d => {
+        for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
+          if (w < MIN_SEMANA_LECTIVA) continue;
+          const key = `${d.id}_${w}`;
+          if (!realPlansMap.has(key)) {
+            syntheticNoEntrego.push({
+              id: `synthetic_no_${d.id}_sem${w}`,
+              docente_id: d.id,
+              docentes: d,
+              area: d.areas ? d.areas.split(',')[0] : 'General',
+              grado: d.grados ? d.grados.split(',')[0] : 'Sin Grado',
+              numero_semana: w,
+              fecha_subida: null,
+              fecha_aplicacion: null,
+              nombre_archivo: null,
+              observaciones: 'Registro automático: Pendiente de entrega en la plataforma SIGEP',
+              estado: 'no_entrego'
+            });
+          }
         }
-      }
-    });
+      });
+    }
 
-    // 4. Combinar registros reales (sin los no_entrego obsoletos) y sintéticos
-    let allRecords = [...cleanRealPlanes, ...syntheticNoEntrego];
+    // 4. Determinar lista de registros
+    let allRecords = estado === 'no_entrego' ? syntheticNoEntrego : [...cleanRealPlanes];
 
     // 5. Filtrar por permisos de docente logueado
     if (req.user.rol === 'docente') {
