@@ -119,14 +119,23 @@ async function initPlaneacionesPage() {
   const listCard = document.getElementById('listCard');
   const adminDocentesCard = document.getElementById('adminDocentesCard');
 
-  if (user && user.rol === 'administrador') {
-    // Administrador: Mostrar listado de Docentes con su botón de Expediente de Planeaciones
+  const role = (user && user.rol ? user.rol : '').toLowerCase().trim();
+  const email = (user && user.correo ? user.correo : '').toLowerCase().trim();
+  const isAdmin = role === 'administrador' || role === 'admin' || email.includes('ieguaimaral') || email.includes('admin');
+
+  if (isAdmin) {
+    // Administrador: Mostrar listado completo de Docentes con su botón de Expediente de Planeaciones
     if (formCard) formCard.style.display = 'none';
     if (listCard) listCard.style.display = 'none';
     if (adminDocentesCard) adminDocentesCard.style.display = 'block';
 
-    await loadDocentesSelect();
-    await loadAdminDocentes();
+    try {
+      await loadDocentesSelect();
+    } catch (e) { console.warn('Error select docentes:', e); }
+
+    try {
+      await loadAdminDocentes();
+    } catch (e) { console.error('Error cargando docentes admin:', e); }
 
     const urlParams = new URLSearchParams(window.location.search);
     const filterParam = urlParams.get('filter');
@@ -145,8 +154,14 @@ async function initPlaneacionesPage() {
     }
     const docenteGroup = document.getElementById('docenteGroup');
     if (docenteGroup) docenteGroup.style.display = 'none';
-    await populateDocenteAreasAndGrados();
-    await loadPlaneaciones();
+
+    try {
+      await populateDocenteAreasAndGrados();
+    } catch (e) { console.warn('Error áreas docente:', e); }
+
+    try {
+      await loadPlaneaciones();
+    } catch (e) { console.error('Error cargando planeaciones docente:', e); }
   }
 }
 
