@@ -649,11 +649,11 @@ function openPreviewInformeModal() {
         <div style="background:var(--bg, #0f172a); border:1px solid var(--border, #334155); border-radius:12px; padding:14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <label style="font-size:12px; font-weight:700; color:var(--primary-accent);">📋 Plantilla de Comunicado Institucional para Copiar o Difusión:</label>
-            <button type="button" class="btn btn-light btn-sm" onclick="navigator.clipboard.writeText(\`${broadcastMsg.replace(/`/g, '\\`')}\`); showToast('✅ Comunicado copiado al portapapeles', 'success');" style="padding:3px 10px; font-size:11px;">
+            <button type="button" class="btn btn-light btn-sm" onclick="copyTextareaContent('broadcastMsgTextarea')" style="padding:3px 10px; font-size:11px;">
               📋 Copiar Comunicado
             </button>
           </div>
-          <textarea readonly style="width:100%; height:120px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12px; resize:none; outline:none;">${broadcastMsg}</textarea>
+          <textarea id="broadcastMsgTextarea" readonly style="width:100%; height:120px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12px; resize:none; outline:none;">${broadcastMsg}</textarea>
         </div>
 
       </div>
@@ -661,6 +661,24 @@ function openPreviewInformeModal() {
   `;
 
   document.body.appendChild(modal);
+}
+
+function copyTextareaContent(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(el.value).then(() => {
+      showToast('✅ Copiado al portapapeles', 'success');
+    }).catch(() => {
+      el.select();
+      document.execCommand('copy');
+      showToast('✅ Copiado al portapapeles', 'success');
+    });
+  } else {
+    el.select();
+    document.execCommand('copy');
+    showToast('✅ Copiado al portapapeles', 'success');
+  }
 }
 
 function notifyDocenteReminder(docenteId) {
@@ -695,11 +713,11 @@ function notifyDocenteReminder(docenteId) {
 
       <div style="background:var(--bg, #0f172a); border:1px solid var(--border, #334155); border-radius:10px; padding:14px; margin-bottom:20px;">
         <label style="font-size:11.5px; font-weight:700; color:var(--primary-accent); display:block; margin-bottom:6px;">Mensaje de Recordatorio Generado:</label>
-        <textarea readonly style="width:100%; height:130px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12.5px; resize:none; outline:none;">${msg}</textarea>
+        <textarea id="reminderMsgTextarea" readonly style="width:100%; height:130px; background:transparent; border:none; color:inherit; font-family:inherit; font-size:12.5px; resize:none; outline:none;">${msg}</textarea>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
-        <button type="button" class="btn btn-light" onclick="navigator.clipboard.writeText(\`${msg.replace(/`/g, '\\`')}\`); showToast('✅ Texto copiado al portapapeles', 'success');">
+        <button type="button" class="btn btn-light" onclick="copyTextareaContent('reminderMsgTextarea')">
           📋 Copiar Texto
         </button>
         <a href="${waUrl}" target="_blank" class="btn btn-success" style="background:#25D366; border:none; color:#fff; font-weight:700; display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:12.5px;">
