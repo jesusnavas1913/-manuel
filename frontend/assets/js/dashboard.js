@@ -1,8 +1,17 @@
+let cachedDashboardDocentes = [];
+let cachedDashboardPlans = [];
+let currentSelectedDashboardWeek = null;
+const EVALUACION_INICIO_SEMANA = 32;
+
 async function initDashboard() {
-  // Semana actual
   const now = new Date();
-  document.getElementById('currentWeekNum').textContent = weekNumber(now);
-  document.getElementById('currentYear').textContent = now.getFullYear();
+  const currentAcademicW = Math.max(36, getCurrentAcademicWeek(now));
+  currentSelectedDashboardWeek = currentAcademicW;
+
+  const currentWeekNumEl = document.getElementById('currentWeekNum');
+  if (currentWeekNumEl) currentWeekNumEl.textContent = currentAcademicW;
+  const currentYearEl = document.getElementById('currentYear');
+  if (currentYearEl) currentYearEl.textContent = now.getFullYear();
 
   // Cargar KPIs desde API REST
   try {
@@ -29,14 +38,21 @@ async function initDashboard() {
     showToast('Error al obtener indicadores KPI', 'error');
   }
 
-  // Cargar últimas planeaciones y calcular cumplimiento de la semana actual
+  // Cargar planeaciones y docentes en paralelo
   try {
-    const plans = await API.Planeaciones.getAll();
+    const [plans, docs] = await Promise.all([
+      API.Planeaciones.getAll().catch(() => []),
+      API.Docentes.getAll().catch(() => [])
+    ]);
+
+    cachedDashboardPlans = Array.isArray(plans) ? plans : [];
+    cachedDashboardDocentes = Array.isArray(docs) ? docs : [];
+
     const tbody = document.getElementById('latestList');
-    if (!plans || plans.length === 0) {
+    if (!cachedDashboardPlans || cachedDashboardPlans.length === 0) {
       if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px;">Sin entregas registradas</td></tr>`;
     } else if (tbody) {
-      tbody.innerHTML = plans.slice(0, 10).map(p => `
+      tbody.innerHTML = cachedDashboardPlans.slice(0, 10).map(p => `
         <tr>
           <td><strong>${p.docente_nombre || 'Docente'}</strong></td>
           <td>${p.area || '-'}</td>
@@ -47,38 +63,54 @@ async function initDashboard() {
       `).join('');
     }
 
-    // Calcular entregó / no entregó para la semana ISO actual
-    try {
-      const docentes = await API.Docentes.getAll();
-      const currentW = weekNumber(now);
-      let okCount = 0;
-      let pendingCount = 0;
-
-      (docentes || []).forEach(d => {
-        const count = (plans || []).filter(p => 
-          String(p.docente_id) === String(d.id) && 
-          parseInt(p.numero_semana) === currentW && 
-          p.estado !== 'no_entrego'
-        ).length;
-        const hasDelivered = count >= 1;
-        if (hasDelivered) okCount++;
-        else pendingCount++;
-      });
-
-      const dashOk = document.getElementById('dashWeekOkCount');
-      if (dashOk) dashOk.textContent = okCount;
-
-      const dashPending = document.getElementById('dashWeekPendingCount');
-      if (dashPending) dashPending.textContent = pendingCount;
-
-      // Renderizar gráficos dinámicos por Sede y Jornada
-      renderSedesAndJornadasCharts(docentes, plans, currentW);
-    } catch (dErr) {
-      console.warn('Error calculando desglose semanal:', dErr);
-    }
+    populateDashboardWeekSelect(currentAcademicW);
+    applyDashboardWeeklyMetrics(currentAcademicW);
   } catch (err) {
-    showToast('Error al cargar la lista de entregas', 'error');
+    showToast('Error al cargar datos del panel principal', 'error');
   }
+}
+
+function populateDashboardWeekSelect(activeW) {
+  const sel = document.getElementById('selDashboardWeek');
+  if (!sel) return;
+
+  let optionsHtml = '';
+  for (let w = activeW; w >= EVALUACION_INICIO_SEMANA; w--) {
+    const isCur = w === activeW;
+    const isSel = w === currentSelectedDashboardWeek;
+    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
+  }
+  sel.innerHTML = optionsHtml;
+}
+
+function onDashboardWeekChange(val) {
+  const w = parseInt(val);
+  if (!w) return;
+  currentSelectedDashboardWeek = w;
+  applyDashboardWeeklyMetrics(w);
+}
+
+function applyDashboardWeeklyMetrics(targetW) {
+  let okCount = 0;
+  let pendingCount = 0;
+
+  (cachedDashboardDocentes || []).forEach(d => {
+    const count = (cachedDashboardPlans || []).filter(p => 
+      String(p.docente_id) === String(d.id) && 
+      parseInt(p.numero_semana) === targetW && 
+      p.estado !== 'no_entrego'
+    ).length;
+    if (count >= 1) okCount++;
+    else pendingCount++;
+  });
+
+  const dashOk = document.getElementById('dashWeekOkCount');
+  if (dashOk) dashOk.textContent = okCount;
+
+  const dashPending = document.getElementById('dashWeekPendingCount');
+  if (dashPending) dashPending.textContent = pendingCount;
+
+  renderSedesAndJornadasCharts(cachedDashboardDocentes, cachedDashboardPlans, targetW);
 }
 
 function switchSedesChartView(view) {
@@ -147,12 +179,12 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const pendingDoc = totalDoc - okDoc;
     const pct = totalDoc > 0 ? Math.round((okDoc / totalDoc) * 100) : 0;
 
-    const totalPlanesSede = (plans || []).filter(p => {
-      if (p.docentes && p.docentes.sede_id !== undefined && p.docentes.sede_id !== null) return parseInt(p.docentes.sede_id) === s.id;
-      const sName = (p.sede_nombre || '').toLowerCase();
-      if (s.id === 1) return !sName || sName.includes('guaimaral');
-      return sName.includes(s.keyName);
-    }).filter(p => parseInt(p.numero_semana) === currentW && p.estado !== 'no_entrego').length;
+    const sedeDocenteIds = new Set(sedeDocentes.map(d => String(d.id)));
+    const totalPlanesSede = (plans || []).filter(p => 
+      sedeDocenteIds.has(String(p.docente_id)) && 
+      parseInt(p.numero_semana) === currentW && 
+      p.estado !== 'no_entrego'
+    ).length;
 
     // SVG Donut Chart
     const r = 36;
@@ -225,14 +257,19 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const totalDoc = jDocentes.length;
     const okDoc = jDocentes.filter(d => isDocenteOk(d.id)).length;
     const pendingDoc = totalDoc - okDoc;
-    const pct = totalDoc > 0 ? Math.round((okDoc / totalDoc) * 100) : 0;
+    const jDocenteIds = new Set(jDocentes.map(d => String(d.id)));
+    const totalPlanesJornada = (plans || []).filter(p => 
+      jDocenteIds.has(String(p.docente_id)) && 
+      parseInt(p.numero_semana) === currentW && 
+      p.estado !== 'no_entrego'
+    ).length;
 
     jornadasHtml += `
       <div style="background: var(--surface, #ffffff); border: 1px solid var(--border, #e2e8f0); border-radius: 14px; padding: 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <div>
             <h4 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">${j.name}</h4>
-            <small style="color: var(--text-muted); font-size: 11.5px;">${totalDoc} Docentes</small>
+            <small style="color: var(--text-muted); font-size: 11.5px;">${totalDoc} Docentes • ${totalPlanesJornada} planeaciones</small>
           </div>
           <span style="font-size: 15px; font-weight: 800; color: ${j.color}; background: rgba(56,189,248,0.12); padding: 4px 10px; border-radius: 20px;">
             ${pct}%
