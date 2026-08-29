@@ -90,7 +90,8 @@ exports.getAll = async (req, res) => {
     if (error) throw error;
 
     const mapped = (rows || []).map(p => {
-      const d = p.docentes || {};
+      const rawDoc = p.docentes;
+      const d = Array.isArray(rawDoc) ? (rawDoc[0] || {}) : (rawDoc || {});
       const sId = (d && d.sede_id !== undefined && d.sede_id !== null) ? parseInt(d.sede_id) : null;
       const jId = (d && d.jornada_id !== undefined && d.jornada_id !== null) ? parseInt(d.jornada_id) : null;
 

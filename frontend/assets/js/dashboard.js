@@ -41,12 +41,12 @@ async function initDashboard() {
   // Cargar planeaciones y docentes en paralelo
   try {
     const [plans, docs] = await Promise.all([
-      API.Planeaciones.getAll().catch(() => []),
-      API.Docentes.getAll().catch(() => [])
+      API.Planeaciones.getAll().catch(e => { console.warn('Error cargando planeaciones:', e); return []; }),
+      API.Docentes.getAll().catch(e => { console.warn('Error cargando docentes:', e); return []; })
     ]);
 
-    cachedDashboardPlans = Array.isArray(plans) ? plans : [];
-    cachedDashboardDocentes = Array.isArray(docs) ? docs : [];
+    cachedDashboardPlans = (Array.isArray(plans) ? plans : []).filter(p => p && typeof p === 'object');
+    cachedDashboardDocentes = (Array.isArray(docs) ? docs : []).filter(d => d && typeof d === 'object');
 
     const tbody = document.getElementById('latestList');
     if (!cachedDashboardPlans || cachedDashboardPlans.length === 0) {
@@ -66,7 +66,7 @@ async function initDashboard() {
     populateDashboardWeekSelect(currentAcademicW);
     applyDashboardWeeklyMetrics(currentAcademicW);
   } catch (err) {
-    showToast('Error al cargar datos del panel principal', 'error');
+    console.warn('Nota al procesar panel principal:', err);
   }
 }
 
@@ -94,8 +94,11 @@ function applyDashboardWeeklyMetrics(targetW) {
   let okCount = 0;
   let pendingCount = 0;
 
-  (cachedDashboardDocentes || []).forEach(d => {
-    const count = (cachedDashboardPlans || []).filter(p => 
+  const validDocs = (cachedDashboardDocentes || []).filter(d => d && d.id !== undefined && d.id !== null);
+  const validPlans = (cachedDashboardPlans || []).filter(p => p && p.docente_id !== undefined && p.docente_id !== null);
+
+  validDocs.forEach(d => {
+    const count = validPlans.filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
@@ -110,7 +113,7 @@ function applyDashboardWeeklyMetrics(targetW) {
   const dashPending = document.getElementById('dashWeekPendingCount');
   if (dashPending) dashPending.textContent = pendingCount;
 
-  renderSedesAndJornadasCharts(cachedDashboardDocentes, cachedDashboardPlans, targetW);
+  renderSedesAndJornadasCharts(validDocs, validPlans, targetW);
 }
 
 function switchSedesChartView(view) {
@@ -140,8 +143,8 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
 
   if (!containerSedes || !containerJornadas) return;
 
-  const docentes = Array.isArray(rawDocentes) ? rawDocentes : [];
-  const plans = Array.isArray(rawPlans) ? rawPlans : [];
+  const docentes = (Array.isArray(rawDocentes) ? rawDocentes : []).filter(d => d && d.id !== undefined && d.id !== null);
+  const plans = (Array.isArray(rawPlans) ? rawPlans : []).filter(p => p && p.docente_id !== undefined && p.docente_id !== null);
 
   const sedesDef = [
     { id: 1, name: 'I.E. Guaimaral (Sede Principal)', keyName: 'guaimaral', color: '#0284c7', gradient: 'linear-gradient(135deg, #0284c7, #38bdf8)' },
@@ -157,6 +160,7 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
 
   const isDocenteOk = (did) => {
     const count = plans.filter(p => 
+      p &&
       String(p.docente_id) === String(did) && 
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'
@@ -167,7 +171,7 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
   // Renderizar Sedes
   let sedesHtml = '';
   sedesDef.forEach(s => {
-    const sedeDocentes = (docentes || []).filter(d => {
+    const sedeDocentes = docentes.filter(d => {
       if (d.sede_id !== undefined && d.sede_id !== null) return parseInt(d.sede_id) === s.id;
       const sName = (d.sede_nombre || '').toLowerCase();
       if (s.id === 1) return !sName || sName.includes('guaimaral');
@@ -180,7 +184,8 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const pct = totalDoc > 0 ? Math.round((okDoc / totalDoc) * 100) : 0;
 
     const sedeDocenteIds = new Set(sedeDocentes.map(d => String(d.id)));
-    const totalPlanesSede = (plans || []).filter(p => 
+    const totalPlanesSede = plans.filter(p => 
+      p &&
       sedeDocenteIds.has(String(p.docente_id)) && 
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'
@@ -258,7 +263,8 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const okDoc = jDocentes.filter(d => isDocenteOk(d.id)).length;
     const pendingDoc = totalDoc - okDoc;
     const jDocenteIds = new Set(jDocentes.map(d => String(d.id)));
-    const totalPlanesJornada = (plans || []).filter(p => 
+    const totalPlanesJornada = plans.filter(p => 
+      p &&
       jDocenteIds.has(String(p.docente_id)) && 
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'
