@@ -250,7 +250,7 @@ function populateDocenteWeekSelect() {
   if (!sel) return;
 
   const now = new Date();
-  const currentW = Math.max(35, getCurrentAcademicWeek(now));
+  const currentW = Math.max(36, getCurrentAcademicWeek(now));
   const defaultW = currentW;
 
   let optionsHtml = '';
@@ -330,7 +330,7 @@ function populateAdminWeekSelect() {
   const sel = document.getElementById('selAdminWeek');
   if (!sel) return;
 
-  const currentW = Math.max(35, getCurrentAcademicWeek(new Date()));
+  const currentW = Math.max(36, getCurrentAcademicWeek(new Date()));
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
