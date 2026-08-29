@@ -171,7 +171,7 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
 
     for (const p of plans) {
       let nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion, docNameStr);
-      if (numeroSemana === 35 || numeroSemana === 36) nuevoEstado = 'a_tiempo';
+      if (numeroSemana === 35) nuevoEstado = 'a_tiempo';
       if (p.estado !== nuevoEstado) {
         await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
       }
@@ -240,10 +240,16 @@ exports.create = async (req, res) => {
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
     const semana = parseInt(numero_semana) || semanaISO(targetDate);
 
-    const maxSemanaPermitida = Math.max(36, semanaISO(new Date()));
+    const dayOfWeek = ahora.getDay();
+    const currentW = Math.max(36, semanaISO(ahora));
+    // Los viernes (5), sábados (6) y domingos (0) se abre la semana siguiente para planificar con anticipación
+    const maxSemanaPermitida = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
+      ? currentW + 1 
+      : currentW;
+
     if (req.user.rol === 'docente' && semana > maxSemanaPermitida) {
       return res.status(400).json({ 
-        error: `No está permitido registrar semanas siguientes (Semana ${semana}). Solo puede registrar la semana actual (Semana ${maxSemanaPermitida}) y semanas anteriores pendientes.` 
+        error: `No está permitido registrar semanas futuras no habilitadas (Semana ${semana}). Semana máxima permitida actualmente: Semana ${maxSemanaPermitida}.` 
       });
     }
 
@@ -253,7 +259,7 @@ exports.create = async (req, res) => {
     const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
     let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion, docNameStr);
-    if (semana === 35 || semana === 36) {
+    if (semana === 35) {
       estadoInicial = 'a_tiempo';
     }
 

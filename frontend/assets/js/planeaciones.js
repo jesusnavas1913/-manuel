@@ -251,14 +251,18 @@ function populateDocenteWeekSelect() {
 
   const now = new Date();
   const currentW = Math.max(36, getCurrentAcademicWeek(now));
-  const defaultW = currentW;
+  const dayOfWeek = now.getDay();
+  // Los viernes, sábados y domingos se abre la semana entrante
+  const maxW = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) ? currentW + 1 : currentW;
+  const defaultW = maxW;
 
   let optionsHtml = '';
-  // Solo semana actual y semanas traseras/anteriores (límite inferior semana 32)
-  for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
+  for (let w = maxW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
+    const isNext = w === currentW + 1;
     let label = `Semana ${w}`;
-    if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
+    if (isNext) label = `Semana ${w} (Próxima Semana - Abierta desde Viernes)`;
+    else if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
     else label = `Semana ${w} (Anterior)`;
 
     const isSel = w === defaultW;
