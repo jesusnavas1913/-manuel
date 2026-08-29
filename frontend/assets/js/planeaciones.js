@@ -231,6 +231,10 @@ function getCurrentAcademicWeek(d = new Date()) {
   return weekNumber(date);
 }
 
+function getActiveAcademicWeek(d = new Date()) {
+  return Math.max(36, getCurrentAcademicWeek(d));
+}
+
 function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
   const jan4 = new Date(year, 0, 4);
   const day = jan4.getDay() || 7;
@@ -250,7 +254,7 @@ function populateDocenteWeekSelect() {
   if (!sel) return;
 
   const now = new Date();
-  const currentW = Math.max(36, getCurrentAcademicWeek(now));
+  const currentW = getActiveAcademicWeek(now);
   const dayOfWeek = now.getDay();
   // Los viernes, sábados y domingos se abre la semana entrante
   const maxW = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) ? currentW + 1 : currentW;
@@ -300,7 +304,7 @@ function onSemanaDocenteChange(val) {
 
 let adminDocentesData = [];
 let currentAdminDocenteFilter = 'all';
-let selectedAdminWeek = getCurrentAcademicWeek(new Date());
+let selectedAdminWeek = getActiveAcademicWeek();
 const EVALUACION_INICIO_SEMANA = 32;
 
 async function loadAdminDocentes() {
@@ -334,7 +338,7 @@ function populateAdminWeekSelect() {
   const sel = document.getElementById('selAdminWeek');
   if (!sel) return;
 
-  const currentW = Math.max(36, getCurrentAcademicWeek(new Date()));
+  const currentW = getActiveAcademicWeek();
   if (!selectedAdminWeek) selectedAdminWeek = currentW;
 
   let optionsHtml = '';
@@ -347,13 +351,13 @@ function populateAdminWeekSelect() {
 }
 
 function changeAdminSelectedWeek(val) {
-  selectedAdminWeek = parseInt(val) || weekNumber(new Date());
+  selectedAdminWeek = parseInt(val) || getActiveAcademicWeek();
   updateAdminWeeklySummary();
   filterAdminDocentes();
 }
 
 function updateAdminWeeklySummary() {
-  const currentW = weekNumber(new Date());
+  const currentW = getActiveAcademicWeek();
   const targetW = selectedAdminWeek || currentW;
 
   const currentWeekLabel = document.getElementById('adminCurrentWeekLabel');
@@ -398,7 +402,7 @@ function setAdminDocenteFilter(filterType) {
 
 function filterAdminDocentes() {
   const q = (document.getElementById('searchAdminDocentes')?.value || '').toLowerCase().trim();
-  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const targetW = selectedAdminWeek || getActiveAcademicWeek();
 
   let list = (adminDocentesData || []).filter(d => {
     const deliveredCount = (allPlaneaciones || []).filter(p => 
@@ -479,7 +483,7 @@ function renderAdminDocentes(list = adminDocentesData) {
     return;
   }
 
-  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const targetW = selectedAdminWeek || getActiveAcademicWeek();
 
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(/[,;]+/).map(s => s.trim()).filter(Boolean).map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
@@ -537,7 +541,7 @@ function renderAdminDocentes(list = adminDocentesData) {
 }
 
 function openPreviewInformeModal() {
-  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const targetW = selectedAdminWeek || getActiveAcademicWeek();
   
   const docentesWithStats = adminDocentesData.map(d => {
     const stats = getDocenteComplianceStats(d.id, targetW);
@@ -547,7 +551,7 @@ function openPreviewInformeModal() {
   const pendingRows = docentesWithStats.filter(item => !item.stats.hasTargetWeekDelivery);
   const okRows = docentesWithStats.filter(item => item.stats.hasTargetWeekDelivery);
 
-  const currentW = weekNumber(new Date());
+  const currentW = getActiveAcademicWeek();
   const isCurrent = targetW === currentW;
 
   const existing = document.getElementById('previewInformeModal');
@@ -681,7 +685,7 @@ function notifyDocenteReminder(docenteId) {
   const d = adminDocentesData.find(item => String(item.id) === String(docenteId));
   if (!d) return;
 
-  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const targetW = selectedAdminWeek || getActiveAcademicWeek();
   const stats = getDocenteComplianceStats(d.id, targetW);
 
   const missingStr = stats.missingWeeks.length > 0 ? stats.missingWeeks.map(w => `Semana ${w}`).join(', ') : `Semana ${targetW}`;
@@ -727,7 +731,7 @@ function notifyDocenteReminder(docenteId) {
 }
 
 function exportIncumplimientoExcel() {
-  const targetW = selectedAdminWeek || weekNumber(new Date());
+  const targetW = selectedAdminWeek || getActiveAcademicWeek();
   
   const docentesWithStats = adminDocentesData.map(d => {
     const stats = getDocenteComplianceStats(d.id, targetW);
@@ -920,7 +924,7 @@ function openDocenteExpedienteModal(docenteId) {
             </thead>
             <tbody>
               ${(() => {
-                const currentWeek = weekNumber(new Date());
+                const currentWeek = getActiveAcademicWeek();
                 const grouped = groupPlansByWeek(plans);
                 let modalHtml = '';
                 grouped.forEach(({ semana, items }) => {
@@ -1159,7 +1163,7 @@ function renderDocenteAlertBanner(plans) {
     return;
   }
 
-  const currentW = weekNumber(new Date());
+  const currentW = getActiveAcademicWeek();
 
   const validPlans = (plans || []).filter(p => p.estado !== 'no_entrego');
   const currentWeekPlansCount = validPlans.filter(p => parseInt(p.numero_semana) === currentW).length;
@@ -1304,7 +1308,7 @@ function renderPlaneaciones(plans) {
     return;
   }
 
-  const currentWeek = weekNumber(new Date());
+  const currentWeek = getActiveAcademicWeek();
   const grouped = groupPlansByWeek(plans);
 
   let html = '';
@@ -1605,7 +1609,7 @@ async function openAdminUploadModal(preselectedDocenteId = null) {
   modal.id = 'adminUploadModal';
   modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(6px); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; animation: fadeIn 0.2s ease;';
 
-  const currentW = weekNumber(new Date());
+  const currentW = getActiveAcademicWeek();
   const mondayCurrentStr = getMondayOfISOWeek(currentW);
 
   const docOptionsHtml = (docentesList || []).map(d => {
