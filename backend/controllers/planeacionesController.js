@@ -41,17 +41,18 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, doc
   lunesClase.setDate(lunesClase.getDate() + diffToMonday);
   lunesClase.setHours(0, 0, 0, 0);
 
-  // Fin de la semana en curso (domingo 23:59:59)
-  const domingoSemana = new Date(lunesClase);
-  domingoSemana.setDate(domingoSemana.getDate() + 6);
-  domingoSemana.setHours(23, 59, 59, 999);
+  // Plazo oficial institucional: Hasta el LUNES de la semana a las 23:59:59
+  // Si se entrega Viernes, Sábado, Domingo o Lunes -> 'a_tiempo'
+  // Si se entrega Martes en adelante -> 'retraso'
+  const plazoLunes = new Date(lunesClase);
+  plazoLunes.setHours(23, 59, 59, 999);
 
-  return subida <= domingoSemana ? 'a_tiempo' : 'retraso';
+  return subida <= plazoLunes ? 'a_tiempo' : 'retraso';
 }
 
-// Helper: calcular número de semana ISO
 function semanaISO(d) {
-  const fecha = parseDateSafe(d);
+  const base = parseDateSafe(d);
+  const fecha = new Date(base.getTime());
   fecha.setHours(0, 0, 0, 0);
   fecha.setDate(fecha.getDate() + 3 - ((fecha.getDay() + 6) % 7));
   const semana1 = new Date(fecha.getFullYear(), 0, 4);
@@ -493,13 +494,121 @@ exports.download = async (req, res) => {
     }
     const plan = planRows[0];
 
+    // Si es una planeación generada por Rector IA, servir vista imprimible oficial
+    if (plan.observaciones && plan.observaciones.includes('[REVISION_IA_JSON]:')) {
+      let secData = null;
+      let metaData = {};
+      try {
+        const jsonStr = plan.observaciones.split('[REVISION_IA_JSON]:')[1];
+        const parsed = JSON.parse(jsonStr);
+        secData = parsed.secuencia || parsed;
+        metaData = parsed;
+      } catch (e) {}
+
+      const docName = (plan.docentes && plan.docentes.nombre) || plan.docente_nombre || 'Docente';
+      const acts = secData?.actividades || [];
+
+      const htmlDoc = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Planeación Didáctica - ${docName} - Semana ${plan.numero_semana || ''}</title>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #000000; margin: 0; padding: 24px; background: #e2e8f0; }
+    p, div, span, strong, td, th, li { color: #000000; }
+    .page-container { max-width: 960px; margin: 0 auto; background: #ffffff; padding: 32px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); border: 1.5px solid #000000; }
+    h1, h2, h3, h4 { margin: 0; color: #000000; }
+    .header-box { text-align: center; border-bottom: 2px solid #000000; padding-bottom: 16px; margin-bottom: 20px; }
+    .inst-title { font-size: 22px; font-weight: 900; color: #000000; letter-spacing: 0.5px; }
+    .inst-sub { font-size: 13px; font-weight: 800; color: #000000; text-transform: uppercase; margin-top: 4px; }
+    .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 12.5px; background: #f8fafc; padding: 14px; border: 1.5px solid #000000; border-radius: 6px; margin-bottom: 20px; text-align: left; color: #000000; }
+    .section-card { border: 1.5px solid #000000; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: #fff; color: #000000; }
+    .section-title { font-size: 13px; font-weight: 900; background: #EDF7ED; color: #000000; border-bottom: 1.5px solid #000000; padding: 6px 10px; margin: -16px -16px 12px -16px; border-radius: 4px 4px 0 0; text-align: center; }
+    .sesion-card { border: 1.5px solid #000000; border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
+    .sesion-head { background: #000000; color: #ffffff; padding: 8px 14px; font-weight: 900; font-size: 13px; display: flex; justify-content: space-between; }
+    .sesion-head * { color: #ffffff !important; }
+    .sesion-body { padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #000000; }
+    .fase-box { padding: 8px 12px; border-radius: 4px; border: 1px solid #000000; color: #000000; }
+    .fase-inicio { background: #f0fdf4; border-left: 4.5px solid #16a34a; }
+    .fase-desarrollo { background: #eff6ff; border-left: 4.5px solid #2563eb; }
+    .fase-cierre { background: #fdf4ff; border-left: 4.5px solid #c026d3; }
+    @media print {
+      body { background: #fff; padding: 0; color: #000000; }
+      .page-container { box-shadow: none; border: none; padding: 0; }
+      .no-print { display: none !important; }
+      @page { margin: 10mm; size: letter portrait; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="max-width:960px; margin: 0 auto 16px; display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px 20px; border-radius: 10px; color: #fff;">
+    <div><strong>✨ Secuencia Didáctica Rector 2.0 AI</strong> (Institución Educativa Guaimaral)</div>
+    <button onclick="window.print()" style="padding: 8px 18px; background: #0284c7; color: #fff; border: none; border-radius: 6px; font-weight: 700; cursor: pointer;">🖨️ Imprimir / Guardar PDF</button>
+  </div>
+  <div class="page-container">
+    <div style="display:flex; gap:16px; align-items:center; margin-bottom:16px; border-bottom:2.5px solid #0f172a; padding-bottom:12px;">
+      <div style="width:75px; height:75px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <img src="/assets/img/logo_guaimaral.png" onerror="this.src='/assets/img/escudo.png'" style="max-width:75px; max-height:75px; object-fit:contain;" alt="Logo" />
+      </div>
+      <div style="flex-grow:1; text-align:center;">
+        <h1 style="font-size:20px; font-weight:900; text-transform:uppercase; color:#0f172a; margin:0;">INSTITUCIÓN EDUCATIVA GUAIMARAL</h1>
+        <div style="margin-top:6px; padding:4px 0; border-top:1px solid #334155; border-bottom:1px solid #334155;">
+          <h2 style="font-size:11.5px; font-weight:800; text-transform:uppercase; color:#334155; margin:0;">PROCESO: GESTIÓN ACADÉMICA - PREPARACIÓN DE CLASES</h2>
+        </div>
+        <p style="font-size:10px; color:#64748b; margin:4px 0 0; font-weight:700; font-style:italic;">"Calidad Humana y Excelencia Académica"</p>
+      </div>
+    </div>
+    <div class="meta-grid">
+      <div><strong>Docente:</strong> ${docName}</div>
+      <div><strong>Área / Asignatura:</strong> ${plan.area || '-'}</div>
+      <div><strong>Grado:</strong> ${plan.grado || '-'}</div>
+      <div><strong>Semana:</strong> Semana ${plan.numero_semana || '-'}</div>
+      <div><strong>Fecha de Aplicación:</strong> ${plan.fecha_aplicacion || '-'}</div>
+      <div><strong>Sesiones:</strong> ${acts.length} clases</div>
+      <div><strong>Eje CRESE:</strong> ${secData?.eje_crese_utilizado || 'Educación Socioemocional y Ciudadana'}</div>
+    </div>
+    <div class="section-card">
+      <div class="section-title">1. FUNDAMENTACIÓN CURRICULAR (MEN & DBA)</div>
+      <p style="margin: 6px 0;"><strong>🎯 Objetivo de Aprendizaje:</strong> ${secData?.objetivo_aprendizaje || 'Comprender y aplicar los conceptos fundamentales.'}</p>
+      <p style="margin: 6px 0;"><strong>📜 Estándar MEN:</strong> ${secData?.estandar || secData?.competencias_men || 'Desarrollo de competencias según lineamientos del MEN.'}</p>
+      ${secData?.dba_utilizado ? `<p style="margin: 6px 0;"><strong>🌟 DBA:</strong> ${secData.dba_utilizado}</p>` : ''}
+    </div>
+    <div class="section-card">
+      <div class="section-title">2. DESARROLLO DE LA SECUENCIA DIDÁCTICA (${acts.length} Sesiones)</div>
+      ${acts.map((act, i) => `
+        <div class="sesion-card">
+          <div class="sesion-head">
+            <span>📚 Sesión ${act.sesion || i + 1}: ${secData?.tema_principal || 'Desarrollo Temático'}</span>
+            <span>⏱️ ${act.tiempo || '2 Horas'}</span>
+          </div>
+          <div class="sesion-body">
+            <div class="fase-box fase-inicio"><strong>🌱 Fase 1 - Inicio:</strong> ${act.fase_inicio || act.descripcion || '-'}</div>
+            <div class="fase-box fase-desarrollo"><strong>⚙️ Fase 2 - Desarrollo:</strong> ${act.fase_desarrollo || '-'}</div>
+            <div class="fase-box fase-cierre"><strong>🎯 Fase 3 - Cierre:</strong> ${act.fase_cierre || '-'}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  <script>
+    if (window.location.search.includes('print=1')) {
+      window.onload = function() { setTimeout(function() { window.print(); }, 400); };
+    }
+  </script>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(htmlDoc);
+    }
+
     if (!plan.nombre_archivo) {
       return res.status(404).json({ error: 'La planeación no tiene un archivo PDF adjunto' });
     }
 
     let pdfUrl = plan.nombre_archivo;
     if (!pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
-      pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${plan.nombre_archivo}`;
+      pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${encodeURIComponent(plan.nombre_archivo)}`;
     }
 
     const response = await fetch(pdfUrl);
@@ -519,6 +628,314 @@ exports.download = async (req, res) => {
   } catch (err) {
     console.error('Error al procesar descarga de PDF:', err);
     return res.status(500).json({ error: 'Error al procesar la descarga del PDF: ' + err.message });
+  }
+};
+
+// POST /api/planeaciones/recibir
+// Recibe planeaciones generadas con IA desde la plataforma rector-2--main
+exports.recibirDesdeRector = async (req, res) => {
+  try {
+    const {
+      docente_email,
+      docente_nombre,
+      area,
+      grado,
+      tema,
+      periodo,
+      sesiones,
+      duracion_clases,
+      numero_semana,
+      fecha_aplicacion,
+      secuencia_json,
+      taller_imprimible,
+      fecha_envio
+    } = req.body;
+
+    if (!docente_email && !docente_nombre) {
+      return res.status(400).json({ error: 'Se requiere información del docente (correo o nombre).' });
+    }
+
+    const cleanEmail = (docente_email || '').toLowerCase().trim();
+    const cleanName = (docente_nombre || '').toLowerCase().trim();
+    const firstPart = cleanEmail ? cleanEmail.split('@')[0].replace(/[._-]/g, ' ') : '';
+
+    // 1. Buscar docente en la base de datos
+    let docente = null;
+    const { data: docs } = await supabase
+      .from('docentes')
+      .select('*')
+      .ilike('correo', cleanEmail);
+
+    if (docs && docs.length > 0) {
+      docente = docs[0];
+    } else {
+      const searchTarget = cleanName || firstPart;
+      const { data: dByName } = await supabase
+        .from('docentes')
+        .select('*')
+        .or(`nombre.ilike.%${searchTarget}%,correo.ilike.%${firstPart}%`);
+      if (dByName && dByName.length > 0) docente = dByName[0];
+    }
+
+    if (!docente) {
+      const { data: newDoc } = await supabase.from('docentes').insert([{
+        nombre: docente_nombre || (cleanEmail ? cleanEmail.split('@')[0] : 'Docente'),
+        correo: cleanEmail,
+        clave_inicial: 'guaimaral2026',
+        estado: 'activo'
+      }]).select('*');
+      docente = newDoc && newDoc[0];
+    }
+
+    if (!docente) {
+      return res.status(400).json({ error: 'No se pudo identificar ni registrar al docente en SIGEP-IEG.' });
+    }
+
+    // 2. Verificar estado de la cuenta (activo / pago)
+    if (docente.activo === false) {
+      return res.status(403).json({
+        error: 'Acceso no permitido: La cuenta del docente no se encuentra activa o presenta pagos pendientes en SIGEP-IEG.'
+      });
+    }
+
+    const did = docente.id;
+    const ahora = new Date();
+    
+    // Determinar fecha de aplicación y número de semana
+    let dateFormatted;
+    let targetDate;
+    if (fecha_aplicacion) {
+      dateFormatted = String(fecha_aplicacion).trim();
+      targetDate = parseDateSafe(fecha_aplicacion);
+    } else {
+      targetDate = ahora;
+      const yyyy = targetDate.getFullYear();
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      dateFormatted = `${yyyy}-${mm}-${dd}`;
+    }
+
+    const semana = numero_semana ? parseInt(numero_semana) : semanaISO(targetDate);
+    const anioTarget = targetDate.getFullYear();
+    const cantClases = duracion_clases ? parseInt(duracion_clases) : (sesiones ? parseInt(sesiones) : 1);
+
+    const dayOfWeek = ahora.getDay();
+    // Desde el viernes se habilita la semana entrante para planificar con anticipación
+    const maxSemanaPermitida = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
+      ? Math.max(36, semanaISO(ahora)) + 1 
+      : Math.max(36, semanaISO(ahora));
+
+    if (semana > maxSemanaPermitida) {
+      return res.status(400).json({ 
+        error: `No está permitido registrar semanas futuras no habilitadas (Semana ${semana}). Semana máxima permitida actualmente: Semana ${maxSemanaPermitida}.` 
+      });
+    }
+
+    const { data: inst } = await supabase
+      .from('semanas_institucionales')
+      .select('id')
+      .eq('anio', anioTarget)
+      .eq('numero_semana', semana);
+
+    const docNameStr = `${docente.nombre || ''} ${docente.correo || ''}`;
+    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, targetDate, docNameStr);
+    if (semana === 35) estadoInicial = 'a_tiempo';
+
+    // Limpiar falta previa de no_entrego
+    await supabase
+      .from('planeaciones')
+      .delete()
+      .eq('docente_id', did)
+      .eq('numero_semana', semana)
+      .eq('estado', 'no_entrego');
+
+    const cleanTema = (tema || 'Planeacion_Didactica')
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileNameVirtual = `Planeacion_IA_${cleanTema.substring(0, 45)}.pdf`;
+
+    let obs = '';
+    if (secuencia_json) {
+      obs = '[REVISION_IA_JSON]:' + JSON.stringify({
+        tema: tema || '',
+        periodo: periodo || '1',
+        sesiones: cantClases,
+        secuencia: secuencia_json,
+        taller: taller_imprimible || null
+      });
+    } else {
+      obs = `Planeación generada con IA - ${cantClases} Clase(s)`;
+    }
+
+    const { data: rows, error } = await supabase
+      .from('planeaciones')
+      .insert([{
+        docente_id: did,
+        area: area || 'General',
+        grado: grado || 'General',
+        fecha_aplicacion: dateFormatted,
+        fecha_subida: ahora.toISOString(),
+        numero_semana: semana,
+        nombre_archivo: fileNameVirtual,
+        observaciones: obs,
+        estado: estadoInicial
+      }])
+      .select('*');
+
+    if (error) throw error;
+
+    await actualizarEstadosSemana(did, semana);
+
+    console.log(`✅ Planeación recibida desde Rector 2.0 para docente ${docente.nombre} (Semana ${semana})`);
+
+    return res.status(201).json({
+      ok: true,
+      mensaje: `Planeación recibida y registrada exitosamente en SIGEP-IEG para la Semana ${semana}.`,
+      planeacion: rows && rows[0]
+    });
+  } catch (err) {
+    console.error('Error en recibirDesdeRector:', err);
+    return res.status(500).json({ error: 'Error al procesar la planeación en SIGEP-IEG: ' + err.message });
+  }
+};
+
+const ALL_COLOMBIAN_AREAS = [
+  'Matemáticas',
+  'Humanidades y Lengua Castellana',
+  'Idioma Extranjero (Inglés)',
+  'Ciencias Naturales y Ed. Ambiental',
+  'Física',
+  'Química',
+  'Biología',
+  'Ciencias Sociales, Historia y Geografía',
+  'Constitución Política y Cátedra de la Paz',
+  'Educación Artística y Cultural',
+  'Educación Física, Recreación y Deportes',
+  'Educación Ética y en Valores Humanos',
+  'Educación Religiosa',
+  'Tecnología e Informática',
+  'Filosofía',
+  'Ciencias Económicas y Políticas',
+  'Cátedra de Estudios Afrocolombianos',
+  'Lectura Crítica'
+];
+
+const ALL_COLOMBIAN_GRADES = [
+  { value: 'Prejardín', label: 'Prejardín' },
+  { value: 'Jardín', label: 'Jardín' },
+  { value: 'Transición', label: 'Transición' },
+  { value: '1°', label: '1° Primaria' },
+  { value: '2°', label: '2° Primaria' },
+  { value: '3°', label: '3° Primaria' },
+  { value: '4°', label: '4° Primaria' },
+  { value: '5°', label: '5° Primaria' },
+  { value: '6°', label: '6° Secundaria' },
+  { value: '7°', label: '7° Secundaria' },
+  { value: '8°', label: '8° Secundaria' },
+  { value: '9°', label: '9° Secundaria' },
+  { value: '10°', label: '10° Media Technical' },
+  { value: '11°', label: '11° Media Technical' },
+  { value: 'Multigrado', label: 'Multigrado' }
+];
+
+function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
+  const mondayWeek1 = new Date(year, 0, 4 - (day - 1));
+  const mondayTarget = new Date(mondayWeek1);
+  mondayTarget.setDate(mondayWeek1.getDate() + (w - 1) * 7);
+  const yyyy = mondayTarget.getFullYear();
+  const mm = String(mondayTarget.getMonth() + 1).padStart(2, '0');
+  const dd = String(mondayTarget.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// GET /api/planeaciones/config-entrega
+// Provee la configuración oficial en tiempo real para que Rector IA no tenga doble lógica
+exports.getConfigEntrega = async (req, res) => {
+  try {
+    const { docente_email } = req.query;
+    const now = new Date();
+    const currentW = Math.max(36, semanaISO(now));
+    
+    // Semanas institucionales de la BD
+    const { data: instWeeks } = await supabase
+      .from('semanas_institucionales')
+      .select('*')
+      .eq('anio', now.getFullYear());
+
+    // Docente específico si viene el correo
+    let docAreas = [];
+    let docGrados = [];
+    if (docente_email) {
+      const { data: docs } = await supabase
+        .from('docentes')
+        .select('*')
+        .ilike('correo', String(docente_email).toLowerCase().trim());
+      if (docs && docs[0]) {
+        if (docs[0].areas) docAreas = docs[0].areas.split(',').map(s => s.trim()).filter(Boolean);
+        if (docs[0].grados) docGrados = docs[0].grados.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    const dayOfWeek = now.getDay();
+    // Los viernes, sábados y domingos se abre la semana entrante (Semana 36) para que los docentes planifiquen a tiempo
+    const semanaAbiertaMax = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
+      ? currentW + 1 
+      : currentW;
+
+    // Generar catálogo de semanas
+    const EVALUACION_INICIO_SEMANA = 32;
+    const semanas = [];
+    for (let w = semanaAbiertaMax; w >= EVALUACION_INICIO_SEMANA; w--) {
+      const isCur = w === currentW;
+      const isNext = w === currentW + 1;
+      const esInst = (instWeeks || []).some(i => i.numero_semana === w);
+      
+      let label = `Semana ${w}`;
+      if (esInst) label += ' (Institucional / Receso)';
+      else if (isNext) label += ' (Próxima Semana - Abierta desde Viernes)';
+      else if (isCur) label += ' (Semana Actual - En Curso)';
+      else label += ' (Anterior)';
+
+      const mondayStr = getMondayOfISOWeek(w, now.getFullYear());
+
+      semanas.push({
+        numero: w,
+        label,
+        es_actual: isCur,
+        es_proxima: isNext,
+        es_institucional: esInst,
+        fecha_lunes: mondayStr
+      });
+    }
+
+    // Calcular domingo de la semana máxima permitida como fecha máxima
+    const mondayObj = new Date(getMondayOfISOWeek(semanaAbiertaMax, now.getFullYear()) + 'T12:00:00');
+    const sundayObj = new Date(mondayObj);
+    sundayObj.setDate(sundayObj.getDate() + 6);
+    const yyyy = sundayObj.getFullYear();
+    const mm = String(sundayObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(sundayObj.getDate()).padStart(2, '0');
+    const fechaMaxima = `${yyyy}-${mm}-${dd}`;
+
+    res.json({
+      semana_actual: currentW,
+      semana_abierta_max: semanaAbiertaMax,
+      fecha_lunes_actual: getMondayOfISOWeek(currentW, now.getFullYear()),
+      fecha_maxima: fechaMaxima,
+      semanas,
+      areas: ALL_COLOMBIAN_AREAS,
+      grados: ALL_COLOMBIAN_GRADES,
+      docente_asignaciones: {
+        areas: docAreas,
+        grados: docGrados
+      }
+    });
+  } catch (e) {
+    console.error('Error en getConfigEntrega:', e);
+    res.status(500).json({ error: e.message });
   }
 };
 

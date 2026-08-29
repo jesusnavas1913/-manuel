@@ -952,7 +952,11 @@ function openDocenteExpedienteModal(docenteId) {
                         <td style="padding:10px;">${badge(p.estado)}</td>
                         <td style="padding:10px; text-align:center; white-space:nowrap;">
                           ${pdfUrl ? `
-                            <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+                            ${(p.observaciones && p.observaciones.includes('[REVISION_IA_JSON]:')) ? `
+  <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:linear-gradient(135deg, #6366f1, #0284c7); font-weight:bold; color:#fff;" onclick="openSecuenciaViewerModal(${p.id})">✨ Ver Planeación</button>
+` : `
+  <button class="btn btn-primary" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+`}
                             <button class="btn btn-success" style="padding:4px 8px; font-size:11px; margin-right:4px; background:#10b981; color:#fff;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
                           ` : ''}
                           <button class="btn btn-light" style="padding:4px 8px; font-size:11px; margin-right:4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
@@ -1254,6 +1258,12 @@ function getCleanPdfFileName(plan) {
 }
 
 function downloadPdfFile(planId, fallbackUrl, filename) {
+  const plan = (allPlaneaciones || []).find(p => p.id === planId);
+  if (plan && plan.observaciones && plan.observaciones.includes('[REVISION_IA_JSON]:')) {
+    openSecuenciaViewerModal(planId);
+    showToast('✨ Abriendo planeación estructurada para imprimir o exportar a PDF', 'info');
+    return;
+  }
   const downloadUrl = planId ? `${API_BASE}/planeaciones/${planId}/descargar` : fallbackUrl;
   if (!downloadUrl) {
     showToast('⚠️ No hay un archivo PDF válido disponible.', 'error');
@@ -1342,7 +1352,11 @@ function renderPlaneaciones(plans) {
         <td style="padding: 8px 10px; white-space: nowrap;">${badge(p.estado)}</td>
         <td style="text-align: center; white-space: nowrap; padding: 8px 10px;">
           ${pdfUrl ? `
-            <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+            ${(p.observaciones && p.observaciones.includes('[REVISION_IA_JSON]:')) ? `
+  <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:linear-gradient(135deg, #6366f1, #0284c7); font-weight:bold; color:#fff;" onclick="openSecuenciaViewerModal(${p.id})">✨ Ver Planeación</button>
+` : `
+  <button class="btn btn-primary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#0284c7;" onclick="openPdfViewerModal(${p.id})">📄 Ver PDF</button>
+`}
             <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px; margin-right: 4px; background:#10b981; color:#fff; cursor:pointer;" onclick="downloadPdfFile(${p.id}, '${pdfUrl}', '${cleanName}')">📥 Descargar</button>
           ` : ''}
           <button class="btn btn-light" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="viewPlanDetail(${p.id})">🔍 Detalle</button>
@@ -2038,6 +2052,12 @@ function openPdfViewerModal(planId) {
   const plan = allPlaneaciones.find(p => p.id === planId);
   if (!plan) return;
 
+  // ✨ Si es una planeación generada por Rector IA, abrir directamente el Visor Institucional de Secuencia Didáctica
+  if (plan.observaciones && plan.observaciones.includes('[REVISION_IA_JSON]:')) {
+    openSecuenciaViewerModal(planId);
+    return;
+  }
+
   const pdfUrl = getPdfUrl(plan);
   if (!pdfUrl) {
     showToast('El documento no tiene una URL de PDF disponible.', 'error');
@@ -2115,3 +2135,483 @@ function toggleModalFullscreen(modalId) {
   }
 }
 
+
+
+
+
+// ✨ Modal Visor Didáctico Institucional (100% LETRA NEGRA, ALTO CONTRASTE, FORMATO OFICIAL GUAIMARAL)
+function openSecuenciaViewerModal(planId) {
+  const plan = (allPlaneaciones || []).find(p => p.id === planId);
+  if (!plan) {
+    showToast("Planeación no encontrada", "error");
+    return;
+  }
+
+  let secData = null;
+  let metaData = {};
+
+  if (plan.observaciones && plan.observaciones.includes("[REVISION_IA_JSON]:")) {
+    try {
+      const jsonStr = plan.observaciones.split("[REVISION_IA_JSON]:")[1];
+      const parsed = JSON.parse(jsonStr);
+      secData = parsed.secuencia || parsed;
+      metaData = parsed;
+    } catch (e) {
+      console.error("Error parseando secuencia IA:", e);
+    }
+  }
+
+  if (!secData) {
+    openPdfViewerModal(planId);
+    return;
+  }
+
+  const existing = document.getElementById("secuenciaViewerModal");
+  if (existing) existing.remove();
+
+  const acts = secData.actividades || [];
+  const rubrica = secData.rubrica || [];
+  const recursos = secData.recursos || [];
+  const taller = secData.taller_imprimible || metaData.taller || null;
+  const docName = plan.docente_nombre || 'Docente';
+  const areaName = plan.area || metaData.area || '-';
+  const gradoName = plan.grado || metaData.grado || '-';
+  const temaName = secData.tema_principal || secData.titulo_secuencia || metaData.tema || plan.area || 'Planeación Didáctica';
+  const fechaApp = plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO');
+  const numSesiones = metaData.sesiones || acts.length || 1;
+
+  const modal = document.createElement("div");
+  modal.id = "secuenciaViewerModal";
+  modal.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.92); backdrop-filter:blur(8px); z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px; animation: fadeIn 0.2s ease;";
+
+  modal.innerHTML = `
+    <div style="background:#0f172a; color:#ffffff; border-radius:16px; max-width:1180px; width:98%; height:96vh; display:flex; flex-direction:column; box-shadow:0 30px 70px rgba(0,0,0,0.8); border:1px solid #334155; overflow:hidden;">
+      
+      <!-- Topbar Header -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#020617; padding:12px 20px; border-bottom:1.5px solid #1e293b; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <img src="assets/img/logo_guaimaral.png" onerror="this.src='assets/img/escudo.png'" style="width:38px; height:38px; object-fit:contain;" alt="Logo" />
+          <div>
+            <h3 style="margin:0; font-size:15px; font-weight:800; color:#38bdf8; display:flex; align-items:center; gap:8px;">
+              <span>${temaName}</span>
+              <span style="font-size:10px; padding:2px 8px; background:linear-gradient(135deg, #6366f1, #a855f7); color:#fff; border-radius:12px; font-weight:700;">Rector 2.0 AI</span>
+              <span style="font-size:10px; padding:2px 8px; background:rgba(56,189,248,0.15); color:#38bdf8; border-radius:12px; font-weight:600;">Semana ${plan.numero_semana || '-'}</span>
+            </h3>
+            <small style="color:#cbd5e1; font-size:12px;">
+              Docente: <strong style="color:#ffffff;">${docName}</strong> • Área: <strong style="color:#ffffff;">${areaName}</strong> • Grado: <strong style="color:#ffffff;">${gradoName}</strong>
+            </small>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <!-- Tabs de vista docente / estudiante -->
+          <div style="background:#1e293b; padding:3px; border-radius:8px; display:inline-flex; gap:4px; border:1px solid #334155;">
+            <button type="button" id="tabBtnDocente" onclick="switchSecuenciaTab('docente')" style="background:#0284c7; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:11.5px; font-weight:800; cursor:pointer;">
+              📖 Vista Docente
+            </button>
+            <button type="button" id="tabBtnEstudiante" onclick="switchSecuenciaTab('estudiante')" style="background:transparent; color:#94a3b8; border:none; border-radius:6px; padding:6px 14px; font-size:11.5px; font-weight:800; cursor:pointer;">
+              🎓 Taller Estudiante
+            </button>
+          </div>
+
+          <button type="button" onclick="printSecuenciaContent()" class="btn btn-primary btn-sm" style="padding:7px 16px; font-size:12px; display:inline-flex; align-items:center; gap:6px; background:#10b981; color:#fff; border:none; border-radius:8px; font-weight:800; cursor:pointer; box-shadow:0 2px 6px rgba(16,185,129,0.3);">
+            🖨️ Imprimir / Guardar PDF
+          </button>
+          <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('secuenciaPrintContainer').innerText); showToast('Copiado al portapapeles', 'success');" class="btn btn-light btn-sm" style="padding:7px 12px; font-size:12px; background:rgba(255,255,255,0.12); border:1px solid #475569; border-radius:8px; color:#ffffff; font-weight:700; cursor:pointer;">
+            📋 Copiar Todo
+          </button>
+          <button type="button" onclick="document.getElementById('secuenciaViewerModal').remove()" style="background:none; border:none; font-size:26px; cursor:pointer; color:#cbd5e1; line-height:1; padding:0 6px;" title="Cerrar">&times;</button>
+        </div>
+      </div>
+
+      <!-- Document Content Body: 100% LETRA NEGRA, CONTRASTE TOTAL -->
+      <div id="secuenciaContentContainer" style="flex:1; width:100%; height:100%; overflow-y:auto; padding:20px; background:#cbd5e1; font-family:'Segoe UI', system-ui, -apple-system, sans-serif;">
+        <div id="secuenciaPrintContainer" style="background:#ffffff; color:#000000; max-width:860px; margin:0 auto; padding:32px 38px; border-radius:6px; box-shadow:0 10px 35px rgba(0,0,0,0.2); border:1.5px solid #475569;">
+          
+          <!-- SECCIÓN DOCENTE (PLANEACIÓN) -->
+          <div id="secDocenteSection">
+            <!-- 1. ENCABEZADO INSTITUCIONAL -->
+            <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px; border-bottom:2.5px solid #000000; padding-bottom:10px;">
+              <div style="width:75px; height:75px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <img src="assets/img/logo_guaimaral.png" onerror="this.src='assets/img/escudo.png'" style="max-width:75px; max-height:75px; object-fit:contain;" alt="Logo I.E. Guaimaral" />
+              </div>
+              <div style="flex-grow:1; text-align:center;">
+                <h1 style="font-size:21px; font-weight:900; text-transform:uppercase; letter-spacing:-0.3px; color:#000000; margin:0;">
+                  INSTITUCIÓN EDUCATIVA GUAIMARAL
+                </h1>
+                <div style="margin-top:6px; padding:4px 0; border-top:1.5px solid #000000; border-bottom:1.5px solid #000000;">
+                  <h2 style="font-size:12px; font-weight:900; text-transform:uppercase; color:#000000; margin:0;">
+                    PROCESO: GESTIÓN ACADÉMICA - PREPARACIÓN DE CLASES
+                  </h2>
+                </div>
+                <p style="font-size:10.5px; color:#1f2937; margin:4px 0 0; font-weight:800; font-style:italic;">
+                  "Calidad Humana y Excelencia Académica"
+                </p>
+              </div>
+            </div>
+
+            <!-- 2. TABLA PRINCIPAL DE DATOS: BORDES Y LETRAS NEGRAS NÍTIDAS -->
+            <div style="border:2px solid #000000; margin-bottom:12px; font-size:12px; color:#000000;">
+              <!-- Fila 1: Título -->
+              <div style="display:flex;">
+                <div style="width:30%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; display:flex; align-items:center; color:#000000;">
+                  TÍTULO DE LA SECUENCIA DIDÁCTICA:
+                </div>
+                <div style="width:70%; padding:8px 10px; font-weight:900; font-size:13px; color:#000000;">
+                  ${secData.titulo_secuencia || secData.tema_principal || temaName}
+                </div>
+              </div>
+              <!-- Fila 2: Área y No. -->
+              <div style="display:flex; border-top:1.5px solid #000000;">
+                <div style="width:65%; display:flex; border-right:1.5px solid #000000;">
+                  <div style="width:38%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                    ÁREA DE CONOCIMIENTO:
+                  </div>
+                  <div style="width:62%; padding:8px 10px; font-weight:800; color:#000000;">
+                    ${areaName}
+                  </div>
+                </div>
+                <div style="width:35%; display:flex;">
+                  <div style="width:60%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; text-align:center; color:#000000;">
+                    SECUENCIA Nº:
+                  </div>
+                  <div style="width:40%; padding:8px 10px; font-weight:900; text-align:center; color:#000000;">
+                    ${secData.numero_secuencia || '1'}
+                  </div>
+                </div>
+              </div>
+              <!-- Fila 3: Tema y Docente -->
+              <div style="display:flex; border-top:1.5px solid #000000;">
+                <div style="width:20%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                  TEMA:
+                </div>
+                <div style="width:45%; padding:8px 10px; font-weight:700; border-right:1.5px solid #000000; color:#000000;">
+                  ${temaName}
+                </div>
+                <div style="width:15%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                  DOCENTE:
+                </div>
+                <div style="width:20%; padding:8px 10px; font-weight:800; color:#000000;">
+                  ${docName}
+                </div>
+              </div>
+              <!-- Fila 4: Fecha, Grado, Tiempo -->
+              <div style="display:flex; border-top:1.5px solid #000000;">
+                <div style="width:33.33%; display:flex; border-right:1.5px solid #000000;">
+                  <div style="width:38%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                    FECHA:
+                  </div>
+                  <div style="width:62%; padding:8px 10px; font-weight:700; color:#000000;">
+                    ${fechaApp}
+                  </div>
+                </div>
+                <div style="width:33.33%; display:flex; border-right:1.5px solid #000000;">
+                  <div style="width:38%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                    GRADO:
+                  </div>
+                  <div style="width:62%; padding:8px 10px; font-weight:900; text-align:center; color:#000000;">
+                    ${gradoName}
+                  </div>
+                </div>
+                <div style="width:33.34%; display:flex;">
+                  <div style="width:38%; padding:8px 10px; font-weight:900; background:#f1f5f9; border-right:1.5px solid #000000; color:#000000;">
+                    TIEMPO:
+                  </div>
+                  <div style="width:62%; padding:8px 10px; font-weight:700; color:#000000;">
+                    ${numSesiones} Sesiones
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. SECCIONES DEL FORMATO: ENCABEZADOS VERDES #EDF7ED CON LETRA NEGRA -->
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#000000;">
+              <!-- Descripción -->
+              <div style="border:1.5px solid #000000;">
+                <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                  DESCRIPCIÓN DE LA SECUENCIA DIDÁCTICA: APRENDIZAJES A LOGRAR
+                </div>
+                <div style="padding:10px 12px; line-height:1.5; text-align:justify; color:#000000; font-weight:500;">
+                  ${secData.descripcion_secuencia || secData.objetivo_aprendizaje || 'Secuencia didáctica orientada al fortalecimiento conceptual, práctico y formativo de los estudiantes.'}
+                </div>
+              </div>
+
+              <!-- Objetivo de Aprendizaje -->
+              <div style="border:1.5px solid #000000;">
+                <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                  OBJETIVO DE APRENDIZAJE
+                </div>
+                <div style="padding:10px 12px; line-height:1.5; font-weight:700; color:#000000;">
+                  ${secData.objetivo_aprendizaje || 'Comprender y aplicar los conceptos fundamentales del tema propuesto.'}
+                </div>
+              </div>
+
+              <!-- Competencias MEN y Estándar -->
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                <div style="border:1.5px solid #000000;">
+                  <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                    COMPETENCIAS DEL MEN
+                  </div>
+                  <div style="padding:10px 12px; line-height:1.5; color:#000000; font-weight:500;">
+                    ${secData.competencias_men || 'Desarrollo de competencias básicas y ciudadanas del Ministerio de Educación Nacional.'}
+                  </div>
+                </div>
+                <div style="border:1.5px solid #000000;">
+                  <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                    ESTÁNDAR DE COMPETENCIA DEL MEN
+                  </div>
+                  <div style="padding:10px 12px; line-height:1.5; color:#000000; font-weight:500;">
+                    ${secData.estandar || 'Estándar articulado a los lineamientos curriculares oficiales.'}
+                  </div>
+                </div>
+              </div>
+
+              <!-- DBA -->
+              <div style="border:1.5px solid #000000;">
+                <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                  DERECHOS BÁSICOS DE APRENDIZAJE (DBA) / ORIENTACIONES PEDAGÓGICAS
+                </div>
+                <div style="padding:10px 12px; line-height:1.5; font-weight:700; color:#000000;">
+                  ${secData.dba_utilizado || 'Articulación pedagógica integral según la malla curricular del grado.'}
+                </div>
+              </div>
+
+              <!-- CRESE y Corporiedad -->
+              <div style="border:1.5px solid #000000; padding:8px 12px; background:#f8fafc; color:#000000; font-size:12px;">
+                <strong>EJE TRANSVERSAL (CRESE):</strong> <span style="font-weight:700;">${secData.eje_crese_utilizado || 'Educación Socioemocional y Ciudadana'}</span>
+                <span style="margin: 0 10px; color:#000000; font-weight:900;">|</span>
+                <strong>CORPORIEDAD / ADI:</strong> <span style="font-weight:700;">${secData.corporiedad_adi || 'Integración pedagógica activa'}</span>
+              </div>
+
+              <!-- Metodología -->
+              <div style="border:1.5px solid #000000;">
+                <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                  METODOLOGÍA
+                </div>
+                <div style="padding:10px 12px; line-height:1.5; color:#000000; font-weight:500;">
+                  ${secData.metodologia || 'Aprendizaje Basado en Indagación, trabajo colaborativo, modelado conceptual y evaluación formativa continua.'}
+                </div>
+              </div>
+
+              <!-- Recursos -->
+              <div style="border:1.5px solid #000000;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; background:#EDF7ED; border-bottom:1.5px solid #000000; font-weight:900; font-size:11px; text-transform:uppercase; color:#000000; text-align:center;">
+                  <div style="padding:6px 10px; border-right:1.5px solid #000000;">NOMBRE DEL RECURSO</div>
+                  <div style="padding:6px 10px;">DESCRIPCIÓN DEL RECURSO</div>
+                </div>
+                ${recursos.length > 0 ? recursos.map(r => `
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; border-bottom:1px solid #000000; font-size:11.5px; color:#000000;">
+                    <div style="padding:8px 10px; border-right:1.5px solid #000000; font-weight:800; color:#000000;">${r.nombre || 'Recurso Pedagógico'}</div>
+                    <div style="padding:8px 10px; color:#000000; font-weight:500;">${r.descripcion || '-'}</div>
+                  </div>
+                `).join('') : `
+                  <div style="padding:10px 12px; font-style:italic; color:#000000;">Material escolar, guías didácticas, pizarra y recursos audiovisuales institucionales.</div>
+                `}
+              </div>
+
+              <!-- 4. DESARROLLO DE LA SECUENCIA DIDÁCTICA POR SESIONES -->
+              <div style="border:2px solid #000000; margin-top:8px;">
+                <div style="background:#000000; color:#ffffff; padding:8px 14px; font-weight:900; font-size:12px; text-transform:uppercase; display:flex; justify-content:space-between; align-items:center;">
+                  <span>DESARROLLO DE LA SECUENCIA DIDÁCTICA (${acts.length} Sesiones)</span>
+                  <span style="font-size:10.5px; font-weight:700; color:#ffffff;">Momento 1: Inicio • Momento 2: Desarrollo • Momento 3: Cierre</span>
+                </div>
+                
+                ${acts.map((act, idx) => `
+                  <div style="border-bottom:${idx < acts.length - 1 ? '2px solid #000000' : 'none'}; padding:12px 14px; background:${idx % 2 === 0 ? '#ffffff' : '#fcfcfc'}; color:#000000;">
+                    <div style="display:flex; justify-content:space-between; font-weight:900; font-size:13px; margin-bottom:8px; color:#000000; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">
+                      <span>📚 Sesión ${act.sesion || idx + 1}: ${temaName}</span>
+                      <span style="font-size:11px; background:#000000; color:#ffffff; padding:2px 8px; border-radius:4px; font-weight:800;">⏱️ ${act.tiempo || '2 Horas'}</span>
+                    </div>
+                    
+                    <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#000000;">
+                      <div style="background:#f0fdf4; border-left:4.5px solid #16a34a; padding:8px 12px; border-radius:4px; border:1px solid #bbf7d0; border-left-width:4.5px;">
+                        <strong style="color:#14532d; font-size:12px;">🌱 Momento 1 - Inicio / Exploración:</strong>
+                        <p style="margin:4px 0 0; line-height:1.45; color:#000000; font-weight:600;">${act.fase_inicio || act.descripcion || 'Activación de saberes previos y motivación inicial.'}</p>
+                      </div>
+                      <div style="background:#eff6ff; border-left:4.5px solid #2563eb; padding:8px 12px; border-radius:4px; border:1px solid #bfdbfe; border-left-width:4.5px;">
+                        <strong style="color:#1e3a8a; font-size:12px;">⚙️ Momento 2 - Desarrollo / Estructuración:</strong>
+                        <p style="margin:4px 0 0; line-height:1.45; color:#000000; font-weight:600;">${act.fase_desarrollo || 'Conceptualización guiada y actividades prácticas en clase.'}</p>
+                      </div>
+                      <div style="background:#fdf4ff; border-left:4.5px solid #c026d3; padding:8px 12px; border-radius:4px; border:1px solid #f5d0fe; border-left-width:4.5px;">
+                        <strong style="color:#701a75; font-size:12px;">🎯 Momento 3 - Cierre / Transferencia:</strong>
+                        <p style="margin:4px 0 0; line-height:1.45; color:#000000; font-weight:600;">${act.fase_cierre || 'Síntesis, autoevaluación y comprobación de aprendizajes.'}</p>
+                      </div>
+
+                      ${(act.preguntas_socraticas && act.preguntas_socraticas.length > 0) ? `
+                        <div style="background:#fffbeb; border:1.5px dashed #d97706; padding:8px 12px; border-radius:4px; font-size:11.5px; color:#000000;">
+                          <strong style="color:#78350f;">💬 Preguntas Socráticas para el Docente:</strong>
+                          <ul style="margin:4px 0 0 18px; padding:0; color:#000000; font-weight:600;">
+                            ${act.preguntas_socraticas.map(p => `<li style="margin-bottom:2px;">${p}</li>`).join('')}
+                          </ul>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+
+              <!-- 5. ADECUACIONES PIAR / DUA -->
+              <div style="border:1.5px solid #000000; margin-top:8px;">
+                <div style="background:#EDF7ED; border-bottom:1.5px solid #000000; padding:6px 10px; font-weight:900; font-size:11px; text-transform:uppercase; text-align:center; color:#000000;">
+                  ADECUACIONES CURRICULARES (DUA / PIAR - INCLUSIÓN EDUCATIVA)
+                </div>
+                <div style="padding:10px 12px; line-height:1.5; white-space:pre-line; color:#000000; font-weight:600;">
+                  ${secData.adecuaciones_piar || "1. Apoyos Visuales y Gráficos: Esquemas conceptuales y guías paso a paso.\n2. Flexibilización de Tiempos: Tiempo adaptado para lectura y procesamiento.\n3. Trabajo por Pares y Tutoría: Acompañamiento guiado en mesa de trabajo según el Plan Individual de Ajustes Razonables (PIAR)."}
+                </div>
+              </div>
+
+              <!-- 6. RÚBRICA DE EVALUACIÓN INSTITUCIONAL -->
+              ${(rubrica && rubrica.length > 0) ? `
+                <div style="border:2px solid #000000; margin-top:8px;">
+                  <div style="background:#000000; color:#ffffff; padding:7px 12px; font-weight:900; font-size:11.5px; text-transform:uppercase; text-align:center;">
+                    RÚBRICA DE EVALUACIÓN FORMATIVA
+                  </div>
+                  <table style="width:100%; border-collapse:collapse; font-size:11px; text-align:left; color:#000000;">
+                    <thead>
+                      <tr style="background:#f1f5f9; border-bottom:2px solid #000000;">
+                        <th style="padding:7px; border-right:1.5px solid #000000; width:25%; color:#000000; font-weight:900;">Criterio</th>
+                        <th style="padding:7px; border-right:1.5px solid #000000; width:18%; color:#000000; font-weight:900;">Bajo</th>
+                        <th style="padding:7px; border-right:1.5px solid #000000; width:19%; color:#000000; font-weight:900;">Básico</th>
+                        <th style="padding:7px; border-right:1.5px solid #000000; width:19%; color:#000000; font-weight:900;">Alto</th>
+                        <th style="padding:7px; width:19%; color:#000000; font-weight:900;">Superior</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${rubrica.map(r => `
+                        <tr style="border-bottom:1px solid #000000;">
+                          <td style="padding:7px; font-weight:800; border-right:1.5px solid #000000; background:#f8fafc; color:#000000;">${r.criterio || '-'}</td>
+                          <td style="padding:7px; border-right:1.5px solid #000000; color:#000000; font-weight:500;">${r.bajo || '-'}</td>
+                          <td style="padding:7px; border-right:1.5px solid #000000; color:#000000; font-weight:500;">${r.basico || '-'}</td>
+                          <td style="padding:7px; border-right:1.5px solid #000000; color:#000000; font-weight:600;">${r.alto || '-'}</td>
+                          <td style="padding:7px; color:#000000; font-weight:700;">${r.superior || '-'}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- SECCIÓN ESTUDIANTE (TALLER IMPRIMIBLE EN LETRA NEGRA) -->
+          <div id="secEstudianteSection" style="display:none; border-top:2.5px dashed #000000; padding-top:18px; color:#000000;">
+            <!-- Encabezado Taller -->
+            <div style="display:flex; gap:14px; align-items:center; margin-bottom:14px; border-bottom:2px solid #000000; padding-bottom:10px;">
+              <img src="assets/img/logo_guaimaral.png" onerror="this.src='assets/img/escudo.png'" style="width:70px; height:70px; object-fit:contain;" alt="Logo" />
+              <div style="flex-grow:1; text-align:center;">
+                <h2 style="font-size:19px; font-weight:900; margin:0; text-transform:uppercase; color:#000000;">INSTITUCIÓN EDUCATIVA GUAIMARAL</h2>
+                <h3 style="font-size:13px; font-weight:900; margin:4px 0 0; color:#000000;">TALLER DE APLICACIÓN Y PROFUNDIZACIÓN</h3>
+                <p style="font-size:11px; color:#000000; margin:3px 0 0; font-weight:700;">Área: ${areaName} • Grado: ${gradoName} • Docente: ${docName}</p>
+              </div>
+            </div>
+
+            <!-- Ficha Estudiante -->
+            <div style="border:1.5px solid #000000; padding:10px 14px; margin-bottom:14px; background:#f8fafc; font-size:12px; color:#000000; display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
+              <div><strong>Estudiante:</strong> __________________________________________________</div>
+              <div><strong>Fecha:</strong> _________________</div>
+            </div>
+
+            ${taller ? `
+              <div style="display:flex; flex-direction:column; gap:14px; font-size:12.5px; color:#000000;">
+                ${taller.instrucciones ? `
+                  <div style="background:#f8fafc; border-left:4.5px solid #000000; border:1.5px solid #000000; border-left-width:4.5px; padding:10px 14px; border-radius:4px;">
+                    <strong style="color:#000000; font-size:12px;">📋 Instrucciones Generales:</strong>
+                    <p style="margin:4px 0 0; color:#000000; font-weight:600; line-height:1.45;">${taller.instrucciones}</p>
+                  </div>
+                ` : ''}
+
+                ${(taller.ejercicios && taller.ejercicios.length > 0) ? `
+                  <div>
+                    <h4 style="font-size:13.5px; font-weight:900; color:#000000; margin:0 0 10px;">✏️ Actividades y Ejercicios Prácticos:</h4>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                      ${taller.ejercicios.map((ej, idx) => `
+                        <div style="border:1.5px solid #000000; border-radius:6px; padding:12px 14px; background:#fff; color:#000000;">
+                          <strong style="font-size:13px;">${idx + 1}.</strong> ${typeof ej === 'string' ? ej : (ej.enunciado || JSON.stringify(ej))}
+                          <div style="margin-top:25px; border-bottom:1px dashed #000000;"></div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${taller.reto_creativo ? `
+                  <div style="background:#fffbeb; border:1.5px solid #000000; padding:12px 14px; border-radius:6px; color:#000000;">
+                    <strong style="color:#000000; font-size:12px;">🌟 Reto Creativo / Desafío:</strong>
+                    <p style="margin:4px 0 0; color:#000000; font-weight:600; line-height:1.45;">${taller.reto_creativo}</p>
+                  </div>
+                ` : ''}
+              </div>
+            ` : `
+              <div style="text-align:center; padding:35px; color:#000000; font-weight:600; font-style:italic;">
+                No se adjuntó taller fotocopiable independiente para esta planeación.
+              </div>
+            `}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+// Función para alternar pestañas entre Docente y Estudiante
+function switchSecuenciaTab(tab) {
+  const docSec = document.getElementById('secDocenteSection');
+  const estSec = document.getElementById('secEstudianteSection');
+  const btnDoc = document.getElementById('tabBtnDocente');
+  const btnEst = document.getElementById('tabBtnEstudiante');
+
+  if (!docSec || !estSec) return;
+
+  if (tab === 'estudiante') {
+    docSec.style.display = 'none';
+    estSec.style.display = 'block';
+    if (btnDoc) { btnDoc.style.background = 'transparent'; btnDoc.style.color = '#94a3b8'; }
+    if (btnEst) { btnEst.style.background = '#0284c7'; btnEst.style.color = '#fff'; }
+  } else {
+    docSec.style.display = 'block';
+    estSec.style.display = 'none';
+    if (btnDoc) { btnDoc.style.background = '#0284c7'; btnDoc.style.color = '#fff'; }
+    if (btnEst) { btnEst.style.background = 'transparent'; btnEst.style.color = '#94a3b8'; }
+  }
+}
+
+// Función de impresión limpia y directa idéntica al original
+function printSecuenciaContent() {
+  const container = document.getElementById('secuenciaPrintContainer');
+  if (!container) return;
+
+  const printWin = window.open('', '_blank', 'width=950,height=850');
+  if (!printWin) {
+    window.print();
+    return;
+  }
+
+  printWin.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Planeación Didáctica - Institución Educativa Guaimaral</title>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #000000; margin: 0; padding: 15px; background: #fff; }
+    @media print {
+      body { padding: 0; margin: 0; color: #000000; }
+      @page { margin: 10mm; size: letter portrait; }
+    }
+  </style>
+</head>
+<body>
+  ${container.innerHTML}
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 400);
+    };
+  </script>
+</body>
+</html>`);
+  printWin.document.close();
+}

@@ -13,6 +13,12 @@ const upload = multer({
 
 router.get('/', auth, c.getAll);
 
+// Endpoint de configuración para que Rector IA consulte áreas, grados, semanas y fechas oficiales
+router.get('/config-entrega', c.getConfigEntrega);
+
+// Endpoint directo para recibir planeaciones desde rector-2--main
+router.post('/recibir', c.recibirDesdeRector);
+
 router.post('/', auth, upload.single('archivo'), [
   body('area').notEmpty().withMessage('Área es requerida'),
   body('grado').notEmpty().withMessage('Grado es requerido'),
@@ -28,3 +34,4 @@ router.put('/:id', auth, c.update);
 router.delete('/:id', auth, c.remove);
 
 module.exports = router;
+
