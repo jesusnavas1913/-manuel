@@ -12,7 +12,7 @@ async function initCalendarioPage() {
 
   const now = new Date();
   document.getElementById('anio').value = now.getFullYear();
-  document.getElementById('numeroSemana').value = weekNumber(now);
+  document.getElementById('numeroSemana').value = getActiveAcademicWeek(now);
   await loadSemanas();
 }
 

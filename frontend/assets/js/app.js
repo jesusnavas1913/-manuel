@@ -266,13 +266,17 @@ function weekNumber(d = new Date()) {
   return 1 + Math.ceil((firstThursday - target) / 604800000);
 }
 
-function getCurrentAcademicWeek(d = new Date()) {
+function getActiveAcademicWeek(d = new Date()) {
   const date = new Date(d.valueOf());
-  // Si es domingo (día 0), las planeaciones que se entregan corresponden a la semana de clases que inicia mañana lunes.
-  if (date.getDay() === 0) {
-    date.setDate(date.getDate() + 1);
-  }
-  return weekNumber(date);
+  const isoW = weekNumber(date);
+  const day = date.getDay(); // 0: Dom, 1: Lun, ..., 5: Vie, 6: Sab
+  // Desde el viernes (5), sábado (6) y domingo (0) se abre y activa la semana siguiente
+  const targetW = (day === 5 || day === 6 || day === 0) ? (isoW + 1) : isoW;
+  return Math.max(36, targetW);
+}
+
+function getCurrentAcademicWeek(d = new Date()) {
+  return getActiveAcademicWeek(d);
 }
 
 function showToast(msg, type = 'info') {
@@ -405,7 +409,7 @@ async function initNotificationCenter() {
 
 async function generateUserNotifications(user) {
   const notifications = [];
-  const currentW = weekNumber(new Date());
+  const currentW = getActiveAcademicWeek(new Date());
 
   try {
     const plansRes = await API.Planeaciones.getAll();

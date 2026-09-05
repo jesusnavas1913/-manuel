@@ -223,16 +223,17 @@ function weekNumber(d = new Date()) {
   return 1 + Math.ceil((firstThursday - target) / 604800000);
 }
 
-function getCurrentAcademicWeek(d = new Date()) {
+function getActiveAcademicWeek(d = new Date()) {
   const date = new Date(d.valueOf());
-  if (date.getDay() === 0) {
-    date.setDate(date.getDate() + 1);
-  }
-  return weekNumber(date);
+  const isoW = weekNumber(date);
+  const day = date.getDay(); // 0: Dom, 1: Lun, ..., 5: Vie, 6: Sab
+  // Desde el viernes (5), sábado (6) y domingo (0) se abre y activa la semana siguiente
+  const targetW = (day === 5 || day === 6 || day === 0) ? (isoW + 1) : isoW;
+  return Math.max(36, targetW);
 }
 
-function getActiveAcademicWeek(d = new Date()) {
-  return Math.max(36, getCurrentAcademicWeek(d));
+function getCurrentAcademicWeek(d = new Date()) {
+  return getActiveAcademicWeek(d);
 }
 
 function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
@@ -256,18 +257,21 @@ function populateDocenteWeekSelect() {
   const now = new Date();
   const currentW = getActiveAcademicWeek(now);
   const dayOfWeek = now.getDay();
-  // Los viernes, sábados y domingos se abre la semana entrante
-  const maxW = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) ? currentW + 1 : currentW;
-  const defaultW = maxW;
+  const defaultW = currentW;
 
   let optionsHtml = '';
-  for (let w = maxW; w >= EVALUACION_INICIO_SEMANA; w--) {
+  for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
-    const isNext = w === currentW + 1;
     let label = `Semana ${w}`;
-    if (isNext) label = `Semana ${w} (Próxima Semana - Abierta desde Viernes)`;
-    else if (isCur) label = `Semana ${w} (Semana Actual - En Curso)`;
-    else label = `Semana ${w} (Anterior)`;
+    if (isCur) {
+      if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
+        label = `Semana ${w} (Semana Activa - Abierta desde Viernes)`;
+      } else {
+        label = `Semana ${w} (Semana Actual - En Curso)`;
+      }
+    } else {
+      label = `Semana ${w} (Anterior)`;
+    }
 
     const isSel = w === defaultW;
     optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;

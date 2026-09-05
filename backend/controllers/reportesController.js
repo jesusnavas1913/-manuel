@@ -1,10 +1,7 @@
 const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
 
-function getCurrentAcademicWeekBackend(d = new Date()) {
+function getActiveAcademicWeekBackend(d = new Date()) {
   const date = new Date(d.valueOf());
-  if (date.getDay() === 0) {
-    date.setDate(date.getDate() + 1);
-  }
   const target = new Date(date.valueOf());
   const dayNr = (date.getDay() + 6) % 7;
   target.setDate(target.getDate() - dayNr + 3);
@@ -13,7 +10,10 @@ function getCurrentAcademicWeekBackend(d = new Date()) {
   if (target.getDay() !== 4) {
     target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
   }
-  return 1 + Math.ceil((firstThursday - target) / 604800000);
+  const isoW = 1 + Math.ceil((firstThursday - target) / 604800000);
+  const day = date.getDay(); // 0: Dom, 1: Lun, ..., 5: Vie, 6: Sab
+  const targetW = (day === 5 || day === 6 || day === 0) ? (isoW + 1) : isoW;
+  return Math.max(36, targetW);
 }
 
 const MIN_SEMANA_LECTIVA = 32;
@@ -37,7 +37,7 @@ exports.getReporte = async (req, res) => {
       .eq('estado', 'activo');
     if (dErr) throw dErr;
 
-    const currentW = getCurrentAcademicWeekBackend(new Date());
+    const currentW = getActiveAcademicWeekBackend(new Date());
     const targetMaxWeek = semana ? parseInt(semana) : currentW;
     const targetMinWeek = semana ? parseInt(semana) : MIN_SEMANA_LECTIVA;
 

@@ -21,8 +21,39 @@ function parseDateSafe(dStr) {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function semanaISO(d) {
+  const base = parseDateSafe(d);
+  const fecha = new Date(base.getTime());
+  fecha.setHours(0, 0, 0, 0);
+  fecha.setDate(fecha.getDate() + 3 - ((fecha.getDay() + 6) % 7));
+  const semana1 = new Date(fecha.getFullYear(), 0, 4);
+  return 1 + Math.round(((fecha - semana1) / 86400000 - 3 + ((semana1.getDay() + 6) % 7)) / 7);
+}
+
+function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
+  const jan4 = new Date(year, 0, 4);
+  const day = jan4.getDay() || 7;
+  const mondayWeek1 = new Date(year, 0, 4 - (day - 1));
+  const mondayTarget = new Date(mondayWeek1);
+  mondayTarget.setDate(mondayWeek1.getDate() + (w - 1) * 7);
+  const yyyy = mondayTarget.getFullYear();
+  const mm = String(mondayTarget.getMonth() + 1).padStart(2, '0');
+  const dd = String(mondayTarget.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Obtener la semana académica activa para planificación y evaluación:
+// Desde el viernes (5), sábado (6) y domingo (0) se abre y activa la semana siguiente
+function getActiveAcademicWeek(d = new Date()) {
+  const base = parseDateSafe(d);
+  const isoW = semanaISO(base);
+  const day = base.getDay(); // 0: Dom, 1: Lun, ..., 5: Vie, 6: Sab
+  const targetW = (day === 5 || day === 6 || day === 0) ? (isoW + 1) : isoW;
+  return Math.max(36, targetW);
+}
+
 // Helper: calcular si es a tiempo o con retraso
-function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, docenteInfo = '') {
+function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, docenteInfo = '', numeroSemana = null) {
   if (esSemanaInstitucional) return 'semana_institucional';
 
   // Excepción especial para Rocío, Nancy y Liliana por la incidencia técnica temporal
@@ -32,31 +63,35 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, doc
   }
 
   const subida = parseDateSafe(fechaSubida);
-  const aplicacion = fechaAplicacion ? parseDateSafe(fechaAplicacion) : subida;
+  let lunesClase;
 
-  // Lunes en que inicia la semana de clases
-  const lunesClase = new Date(aplicacion);
-  const day = lunesClase.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  lunesClase.setDate(lunesClase.getDate() + diffToMonday);
-  lunesClase.setHours(0, 0, 0, 0);
+  if (numeroSemana && !isNaN(parseInt(numeroSemana))) {
+    const y = subida ? subida.getFullYear() : new Date().getFullYear();
+    const mondayStr = getMondayOfISOWeek(parseInt(numeroSemana), y);
+    lunesClase = parseDateSafe(mondayStr);
+    lunesClase.setHours(0, 0, 0, 0);
+  } else if (fechaAplicacion) {
+    const aplicacion = parseDateSafe(fechaAplicacion);
+    lunesClase = new Date(aplicacion);
+    const day = lunesClase.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    lunesClase.setDate(lunesClase.getDate() + diffToMonday);
+    lunesClase.setHours(0, 0, 0, 0);
+  } else {
+    lunesClase = new Date(subida);
+    const day = lunesClase.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    lunesClase.setDate(lunesClase.getDate() + diffToMonday);
+    lunesClase.setHours(0, 0, 0, 0);
+  }
 
-  // Plazo oficial institucional: Hasta el LUNES de la semana a las 23:59:59
+  // Plazo oficial institucional: Hasta el LUNES de la semana a las 23:59:59.999
   // Si se entrega Viernes, Sábado, Domingo o Lunes -> 'a_tiempo'
   // Si se entrega Martes en adelante -> 'retraso'
   const plazoLunes = new Date(lunesClase);
   plazoLunes.setHours(23, 59, 59, 999);
 
   return subida <= plazoLunes ? 'a_tiempo' : 'retraso';
-}
-
-function semanaISO(d) {
-  const base = parseDateSafe(d);
-  const fecha = new Date(base.getTime());
-  fecha.setHours(0, 0, 0, 0);
-  fecha.setDate(fecha.getDate() + 3 - ((fecha.getDay() + 6) % 7));
-  const semana1 = new Date(fecha.getFullYear(), 0, 4);
-  return 1 + Math.round(((fecha - semana1) / 86400000 - 3 + ((semana1.getDay() + 6) % 7)) / 7);
 }
 
 // GET /api/planeaciones
@@ -172,8 +207,8 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
     const esInst = inst && inst.length > 0;
 
     for (const p of plans) {
-      let nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion, docNameStr);
-      if (numeroSemana === 35) nuevoEstado = 'a_tiempo';
+      let nuevoEstado = calcularEstado(p.fecha_subida, esInst, p.fecha_aplicacion, docNameStr, p.numero_semana || numeroSemana);
+      if (parseInt(numeroSemana) === 35) nuevoEstado = 'a_tiempo';
       if (p.estado !== nuevoEstado) {
         await supabase.from('planeaciones').update({ estado: nuevoEstado }).eq('id', p.id);
       }
@@ -239,15 +274,11 @@ exports.create = async (req, res) => {
 
   try {
     const ahora = new Date();
-    const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : ahora;
-    const semana = parseInt(numero_semana) || semanaISO(targetDate);
+    const activeW = getActiveAcademicWeek(ahora);
+    const semana = parseInt(numero_semana) || activeW;
+    const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : parseDateSafe(getMondayOfISOWeek(semana, ahora.getFullYear()));
 
-    const dayOfWeek = ahora.getDay();
-    const currentW = Math.max(36, semanaISO(ahora));
-    // Los viernes (5), sábados (6) y domingos (0) se abre la semana siguiente para planificar con anticipación
-    const maxSemanaPermitida = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
-      ? currentW + 1 
-      : currentW;
+    const maxSemanaPermitida = activeW + 1;
 
     if (req.user.rol === 'docente' && semana > maxSemanaPermitida) {
       return res.status(400).json({ 
@@ -260,7 +291,7 @@ exports.create = async (req, res) => {
 
     const anioTarget = targetDate.getFullYear();
     const { data: inst } = await supabase.from('semanas_institucionales').select('id').eq('anio', anioTarget).eq('numero_semana', semana);
-    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion, docNameStr);
+    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, fecha_aplicacion, docNameStr, semana);
     if (semana === 35) {
       estadoInicial = 'a_tiempo';
     }
@@ -716,15 +747,13 @@ exports.recibirDesdeRector = async (req, res) => {
       dateFormatted = `${yyyy}-${mm}-${dd}`;
     }
 
-    const semana = numero_semana ? parseInt(numero_semana) : semanaISO(targetDate);
+    const ahora = new Date();
+    const activeW = getActiveAcademicWeek(ahora);
+    const semana = numero_semana ? parseInt(numero_semana) : activeW;
     const anioTarget = targetDate.getFullYear();
     const cantClases = duracion_clases ? parseInt(duracion_clases) : (sesiones ? parseInt(sesiones) : 1);
 
-    const dayOfWeek = ahora.getDay();
-    // Desde el viernes se habilita la semana entrante para planificar con anticipación
-    const maxSemanaPermitida = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
-      ? Math.max(36, semanaISO(ahora)) + 1 
-      : Math.max(36, semanaISO(ahora));
+    const maxSemanaPermitida = activeW + 1;
 
     if (semana > maxSemanaPermitida) {
       return res.status(400).json({ 
@@ -739,7 +768,7 @@ exports.recibirDesdeRector = async (req, res) => {
       .eq('numero_semana', semana);
 
     const docNameStr = `${docente.nombre || ''} ${docente.correo || ''}`;
-    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, targetDate, docNameStr);
+    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, targetDate, docNameStr, semana);
     if (semana === 35) estadoInicial = 'a_tiempo';
 
     // Limpiar falta previa de no_entrego
@@ -840,25 +869,13 @@ const ALL_COLOMBIAN_GRADES = [
   { value: 'Multigrado', label: 'Multigrado' }
 ];
 
-function getMondayOfISOWeek(w, year = new Date().getFullYear()) {
-  const jan4 = new Date(year, 0, 4);
-  const day = jan4.getDay() || 7;
-  const mondayWeek1 = new Date(year, 0, 4 - (day - 1));
-  const mondayTarget = new Date(mondayWeek1);
-  mondayTarget.setDate(mondayWeek1.getDate() + (w - 1) * 7);
-  const yyyy = mondayTarget.getFullYear();
-  const mm = String(mondayTarget.getMonth() + 1).padStart(2, '0');
-  const dd = String(mondayTarget.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 // GET /api/planeaciones/config-entrega
 // Provee la configuración oficial en tiempo real para que Rector IA no tenga doble lógica
 exports.getConfigEntrega = async (req, res) => {
   try {
     const { docente_email } = req.query;
     const now = new Date();
-    const currentW = Math.max(36, semanaISO(now));
+    const currentW = getActiveAcademicWeek(now);
     
     // Semanas institucionales de la BD
     const { data: instWeeks } = await supabase
@@ -880,24 +897,18 @@ exports.getConfigEntrega = async (req, res) => {
       }
     }
 
-    const dayOfWeek = now.getDay();
-    // Los viernes, sábados y domingos se abre la semana entrante (Semana 36) para que los docentes planifiquen a tiempo
-    const semanaAbiertaMax = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) 
-      ? currentW + 1 
-      : currentW;
+    const semanaAbiertaMax = currentW;
 
     // Generar catálogo de semanas
     const EVALUACION_INICIO_SEMANA = 32;
     const semanas = [];
     for (let w = semanaAbiertaMax; w >= EVALUACION_INICIO_SEMANA; w--) {
       const isCur = w === currentW;
-      const isNext = w === currentW + 1;
       const esInst = (instWeeks || []).some(i => i.numero_semana === w);
       
       let label = `Semana ${w}`;
       if (esInst) label += ' (Institucional / Receso)';
-      else if (isNext) label += ' (Próxima Semana - Abierta desde Viernes)';
-      else if (isCur) label += ' (Semana Actual - En Curso)';
+      else if (isCur) label += ' (Semana Activa - En Curso)';
       else label += ' (Anterior)';
 
       const mondayStr = getMondayOfISOWeek(w, now.getFullYear());
@@ -906,7 +917,7 @@ exports.getConfigEntrega = async (req, res) => {
         numero: w,
         label,
         es_actual: isCur,
-        es_proxima: isNext,
+        es_proxima: false,
         es_institucional: esInst,
         fecha_lunes: mondayStr
       });

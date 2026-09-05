@@ -5,7 +5,7 @@ const EVALUACION_INICIO_SEMANA = 32;
 
 async function initDashboard() {
   const now = new Date();
-  const currentAcademicW = Math.max(36, getCurrentAcademicWeek(now));
+  const currentAcademicW = getActiveAcademicWeek(now);
   currentSelectedDashboardWeek = currentAcademicW;
 
   const currentWeekNumEl = document.getElementById('currentWeekNum');
