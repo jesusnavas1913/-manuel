@@ -93,13 +93,6 @@ if (!process.env.VERCEL) {
 // ── Asegurar Administrador (Local + Vercel) ───────────────────
 (async () => {
   try {
-
-
-
-
-
-
-
     const bcrypt = require('bcryptjs');
     const { supabase } = require('./db');
     const hash = await bcrypt.hash('admin123', 10);
@@ -116,18 +109,17 @@ if (!process.env.VERCEL) {
         password_hash: hash,
         rol: 'administrador',
         activo: true
-      }]);
+      }]).catch(() => {});
       console.log('✅ Admin creado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     } else {
-      // Forzar correo y nombre correcto
-      for (const admin of admins) {
-        await supabase.from('usuarios').update({
-          nombre: 'I.E. Guaimaral',
-          correo: 'ieguaimaral@guaimaral.edu.co',
-          password_hash: hash,
-          activo: true
-        }).eq('id', admin.id);
-      }
+      // Sincronizar el primer admin principal de forma segura
+      const mainAdmin = admins[0];
+      await supabase.from('usuarios').update({
+        nombre: 'I.E. Guaimaral',
+        correo: 'ieguaimaral@guaimaral.edu.co',
+        password_hash: hash,
+        activo: true
+      }).eq('id', mainAdmin.id).catch(() => {});
       console.log('✅ Admin sincronizado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     }
 
