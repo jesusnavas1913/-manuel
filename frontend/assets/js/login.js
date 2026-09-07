@@ -172,12 +172,3 @@ async function handleLogin(e) {
   }
 }
 
-// ── Autocompletar Credenciales de Administrador ───────────────
-function autoFillAdminCredentials() {
-  const correoInp = document.getElementById('correo');
-  const passInp = document.getElementById('password');
-  if (correoInp) correoInp.value = 'ieguaimaral@guaimaral.edu.co';
-  if (passInp) passInp.value = 'admin123';
-  showToast('⚡ Credenciales de Administrador cargadas (ieguaimaral@guaimaral.edu.co)', 'success');
-}
-
