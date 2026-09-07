@@ -157,12 +157,18 @@ async function handleLogin(e) {
       window.location.href = data.user?.rol === 'docente' ? 'planeaciones.html' : 'dashboard.html';
     }, 700);
   } catch (err) {
-    showToast(err.message || 'Credenciales incorrectas', 'error');
+    let errMsg = err.message || 'Credenciales incorrectas';
+    if (errMsg === 'Failed to fetch' || errMsg.includes('NetworkError') || errMsg.includes('Failed to fetch')) {
+      errMsg = 'No se pudo conectar con el servidor backend (puerto 3001). Asegúrese de haber iniciado el backend con npm start.';
+    }
+    showToast(errMsg, 'error');
     btn.disabled = false;
     btn.textContent = 'VERIFICAR IDENTIDAD E INGRESAR';
     const panel = document.getElementById('rightPanel');
-    panel.style.animation = 'none';
-    requestAnimationFrame(() => { panel.style.animation = 'shake 0.4s ease'; });
+    if (panel) {
+      panel.style.animation = 'none';
+      requestAnimationFrame(() => { panel.style.animation = 'shake 0.4s ease'; });
+    }
   }
 }
 
