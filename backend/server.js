@@ -109,7 +109,7 @@ if (!process.env.VERCEL) {
         password_hash: hash,
         rol: 'administrador',
         activo: true
-      }]).catch(() => {});
+      }]);
       console.log('✅ Admin creado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     } else {
       // Sincronizar el primer admin principal de forma segura
@@ -119,7 +119,7 @@ if (!process.env.VERCEL) {
         correo: 'ieguaimaral@guaimaral.edu.co',
         password_hash: hash,
         activo: true
-      }).eq('id', mainAdmin.id).catch(() => {});
+      }).eq('id', mainAdmin.id);
       console.log('✅ Admin sincronizado: I.E. Guaimaral (ieguaimaral@guaimaral.edu.co)');
     }
 

@@ -747,7 +747,6 @@ exports.recibirDesdeRector = async (req, res) => {
       dateFormatted = `${yyyy}-${mm}-${dd}`;
     }
 
-    const ahora = new Date();
     const activeW = getActiveAcademicWeek(ahora);
     const semana = numero_semana ? parseInt(numero_semana) : activeW;
     const anioTarget = targetDate.getFullYear();
