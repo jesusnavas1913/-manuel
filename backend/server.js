@@ -75,7 +75,7 @@ app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 app.use((err, req, res, next) => {
   console.error('💥 Error global no capturado:', err);
   res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' ? 'Error interno del servidor' : err.message || 'Error interno del servidor'
+    error: err.message || 'Error interno del servidor'
   });
 });
 

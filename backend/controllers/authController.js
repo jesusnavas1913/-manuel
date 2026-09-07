@@ -228,7 +228,7 @@ exports.login = async (req, res) => {
 
   } catch (err) {
     console.error('Error en login:', err);
-    res.status(500).json({ error: 'Error interno al procesar inicio de sesión' });
+    res.status(500).json({ error: err.message || 'Error interno al procesar inicio de sesión' });
   }
 };
 

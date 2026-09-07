@@ -19,31 +19,42 @@ function createRateLimiter(options = {}) {
   }
 
   return (req, res, next) => {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'ip-desconocida';
-    const key = `${req.baseUrl}_${ip}`;
-    const now = Date.now();
+    try {
+      const forwarded = req.headers ? req.headers['x-forwarded-for'] : null;
+      const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : null) ||
+                 req.ip ||
+                 (req.socket && req.socket.remoteAddress) ||
+                 'ip-desconocida';
+      const key = `${req.baseUrl || ''}_${ip}`;
+      const now = Date.now();
 
-    let record = memoryStore.get(key);
+      let record = memoryStore.get(key);
 
-    if (!record || now > record.resetTime) {
-      record = {
-        count: 1,
-        resetTime: now + windowMs
-      };
-      memoryStore.set(key, record);
-    } else {
-      record.count++;
+      if (!record || now > record.resetTime) {
+        record = {
+          count: 1,
+          resetTime: now + windowMs
+        };
+        memoryStore.set(key, record);
+      } else {
+        record.count++;
+      }
+
+      if (!res.headersSent) {
+        res.setHeader('X-RateLimit-Limit', max);
+        res.setHeader('X-RateLimit-Remaining', Math.max(0, max - record.count));
+        res.setHeader('X-RateLimit-Reset', Math.ceil(record.resetTime / 1000));
+      }
+
+      if (record.count > max) {
+        return res.status(429).json({ error: message });
+      }
+
+      next();
+    } catch (err) {
+      console.warn('Aviso en rateLimiter:', err.message);
+      next(); // Continuar en caso de fallo inesperado del rate limiter
     }
-
-    res.setHeader('X-RateLimit-Limit', max);
-    res.setHeader('X-RateLimit-Remaining', Math.max(0, max - record.count));
-    res.setHeader('X-RateLimit-Reset', Math.ceil(record.resetTime / 1000));
-
-    if (record.count > max) {
-      return res.status(429).json({ error: message });
-    }
-
-    next();
   };
 }
 
