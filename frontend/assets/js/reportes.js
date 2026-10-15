@@ -4,6 +4,8 @@ let totalPages = 1;
 let totalItems = 0;
 let globalStats = null;
 let globalConsolidadoDocentes = [];
+let globalSemanasEvaluadas = [];
+let globalFaltantesIndividuales = [];
 
 // Sort logic requires server implementation in backend, or local sort.
 // For now we will sort locally on the current page data.
@@ -13,6 +15,98 @@ let sortAsc = true;
 async function initReportesPage() {
   await loadFilterOptions();
   await fetchReport();
+  await loadStorageStatus();
+}
+
+async function loadStorageStatus() {
+  try {
+    const card = document.getElementById('storageControlCard');
+    if (!card) return;
+
+    const user = Storage.getUser();
+    const role = (user && user.rol ? user.rol : '').toLowerCase().trim();
+    const isAdmin = !user?.docente_id && (role === 'administrador' || role === 'admin' || role === 'coordinador');
+    if (!isAdmin) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const st = await API.StorageManage.getStatus();
+    const count = st.archivosEnStorage || 0;
+    const max = st.limiteMax || 700;
+    const pct = Math.min(100, Math.round((count / max) * 100));
+
+    const countEl = document.getElementById('storageCountText');
+    const pctEl = document.getElementById('storagePercentText');
+    const barEl = document.getElementById('storageProgressBar');
+    const bdEl = document.getElementById('storageTotalBdText');
+    const badgeEl = document.getElementById('storageBadge');
+
+    if (countEl) countEl.textContent = `Archivos en Nube: ${count} / ${max} PDFs`;
+    if (pctEl) pctEl.textContent = `${pct}% capacidad utilizada`;
+    if (bdEl) bdEl.textContent = `Planeaciones activas en BD: ${st.totalPlaneacionesEnBD || 0}`;
+
+    if (barEl) {
+      barEl.style.width = `${pct}%`;
+      if (pct >= 90) {
+        barEl.style.background = '#ef4444';
+      } else if (pct >= 70) {
+        barEl.style.background = '#f59e0b';
+      } else {
+        barEl.style.background = '#10b981';
+      }
+    }
+
+    if (badgeEl) {
+      if (count >= max) {
+        badgeEl.textContent = '⚠️ Límite Alcanzado (700 PDFs)';
+        badgeEl.style.background = '#ef4444';
+      } else if (count >= 550) {
+        badgeEl.textContent = '🟡 Precaución Almacenamiento';
+        badgeEl.style.background = '#f59e0b';
+      } else {
+        badgeEl.textContent = `Óptimo · Límite: ${max} PDFs`;
+        badgeEl.style.background = '#0284c7';
+      }
+    }
+  } catch (err) {
+    console.warn('Nota al cargar estado de almacenamiento:', err);
+  }
+}
+
+async function ejecutarPurgaStorage() {
+  try {
+    const confirmacion = confirm(
+      '⚠️ ¿CONFIRMAR PURGA DE ALMACENAMIENTO DE PDFs?\n\n' +
+      '• Se eliminarán los archivos PDF físicos de la nube para liberar espacio y evitar saturación.\n' +
+      '• EL 100% DE LOS DATOS SE CONSERVAN EN LA BASE DE DATOS: Las semanas, docentes, materias, estados (a tiempo / retraso) y observaciones seguirán contando en todos los reportes y estadísticas.\n' +
+      '• Puedes descargar primero el reporte consolidado en Excel si deseas tener un respaldo.\n\n' +
+      '¿Deseas continuar y liberar el espacio ahora?'
+    );
+
+    if (!confirmacion) return;
+
+    const btn = document.getElementById('btnPurgarStorage');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Liberando almacenamiento...';
+    }
+
+    showToast('Iniciando purga segura de PDFs en Supabase Storage...', 'info');
+
+    const res = await API.StorageManage.purgar(0);
+
+    showToast(`✅ ${res.mensaje || 'Almacenamiento liberado exitosamente.'}`, 'success');
+    await loadStorageStatus();
+  } catch (err) {
+    showToast('Error al purgar almacenamiento: ' + (err.message || err), 'error');
+  } finally {
+    const btn = document.getElementById('btnPurgarStorage');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🧹 Purgar PDFs de Nube (Liberar Espacio)';
+    }
+  }
 }
 
 async function loadFilterOptions() {
@@ -71,6 +165,8 @@ async function fetchReport(page = 1) {
     totalItems = res.total || 0;
     globalStats = res.stats || null;
     globalConsolidadoDocentes = res.consolidado_docentes || [];
+    globalSemanasEvaluadas = res.semanas_evaluadas || [];
+    globalFaltantesIndividuales = res.faltantes_individuales || [];
 
     // Búsqueda en texto para la página actual
     const qSearch = (document.getElementById('fSearch').value || '').toLowerCase().trim();
@@ -217,13 +313,13 @@ function renderReport() {
     
     let semanaHtml = '';
     if (isNoEntrego) {
-      semanaHtml = `<span style="background:rgba(239,68,68,0.15); color:#ef4444; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11.5px;">${r.numero_semana || '-'}</span>`;
+      semanaHtml = `<span style="background:rgba(239,68,68,0.15); color:#ef4444; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11.5px;">Semana ${r.numero_semana || '-'}</span>`;
     } else {
       semanaHtml = `Semana ${r.numero_semana || '-'}`;
     }
 
     const estadoHtml = isNoEntrego
-      ? `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 No entregó ${r.missing_count ? `(${r.missing_count} sem)` : ''}</span>`
+      ? `<span class="badge no" style="font-size:11px; padding:4px 10px;">🔴 No entregó</span>`
       : badge(r.estado);
 
     return `
@@ -259,11 +355,7 @@ function getPdfUrlReportes(r) {
 function previewPdfModal(id) {
   const r = allReportData.find(item => item.id === id);
   if (!r) return;
-  const pdfUrl = getPdfUrlReportes(r);
-  if (!pdfUrl) {
-    showToast('El documento no tiene un archivo PDF disponible.', 'error');
-    return;
-  }
+  const pdfUrl = `${API_BASE}/planeaciones/${r.id}/descargar`;
 
   const existing = document.getElementById('reportPdfModal');
   if (existing) existing.remove();

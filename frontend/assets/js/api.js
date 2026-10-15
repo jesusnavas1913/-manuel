@@ -161,5 +161,13 @@ var API = window.API || {
       const qs = query.toString() ? `?${query.toString()}` : '';
       return apiFetch(`/reportes${qs}`);
     }
+  },
+  StorageManage: {
+    getStatus: () => apiFetch('/planeaciones/storage-status'),
+    purgar: (mantenerRecientes = 0) => apiFetch('/planeaciones/purgar-storage', {
+      method: 'POST',
+      body: JSON.stringify({ mantenerRecientes })
+    })
   }
 };
+

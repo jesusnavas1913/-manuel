@@ -1,8 +1,17 @@
 node_modules/
 .env
+.env.*
 *.log
 npm-debug.log*
 .DS_Store
 Thumbs.db
 dist/
 .cache/
+.vercel
+
+# Respaldos y CSVs de datos
+*.csv
+*.bat
+backend/importar_csvs.js
+backend/descargar_backup_supabase.js
+backend/DESCARGAR_DATOS_SUPABASE.bat

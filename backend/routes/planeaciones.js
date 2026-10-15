@@ -13,6 +13,10 @@ const upload = multer({
 
 router.get('/', auth, c.getAll);
 
+// Control de almacenamiento y purga segura (Límite 700 PDFs)
+router.get('/storage-status', auth, c.getStorageStatus);
+router.post('/purgar-storage', auth, c.purgarStorage);
+
 // Endpoint de configuración para que Rector IA consulte áreas, grados, semanas y fechas oficiales
 router.get('/config-entrega', c.getConfigEntrega);
 

@@ -64,53 +64,85 @@ exports.getReporte = async (req, res) => {
       .eq('anio', new Date().getFullYear());
     const instSet = new Set((instWeeks || []).map(i => parseInt(i.numero_semana, 10)));
 
-    // 4. Generar entregas sintéticas de 'no_entrego' agrupadas por docente SIEMPRE
+    // 4. Generar faltantes individuales y matriz semanal por docente
     const syntheticNoEntrego = [];
     const consolidadoDocentesMap = new Map();
+    const semanasEvaluadas = [];
+    for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
+      if (w >= MIN_SEMANA_LECTIVA) {
+        semanasEvaluadas.push({
+          semana: w,
+          es_institucional: instSet.has(w)
+        });
+      }
+    }
 
     (allDocentes || []).forEach(d => {
       const missingWeeks = [];
-      for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
-        if (w < MIN_SEMANA_LECTIVA) continue;
-        if (instSet.has(w)) continue; // Omitir semana de descanso / receso
-        const key = `${d.id}_${w}`;
-        if (!realPlansMap.has(key)) {
-          missingWeeks.push(w);
+      const semanasDetalle = {};
+
+      // Mapear planeaciones del docente
+      const docentePlanes = cleanRealPlanes.filter(p => String(p.docente_id) === String(d.id));
+      const planesPorSemana = new Map();
+      docentePlanes.forEach(p => {
+        if (p.numero_semana) {
+          planesPorSemana.set(parseInt(p.numero_semana), p);
         }
-      }
+      });
 
       const sId = (d && d.sede_id !== undefined && d.sede_id !== null) ? parseInt(d.sede_id) : null;
       const jId = (d && d.jornada_id !== undefined && d.jornada_id !== null) ? parseInt(d.jornada_id) : null;
       const sedeNom = (sId && SEDES_MAP[sId]) ? SEDES_MAP[sId] : (d.sede_nombre || 'I.E. Guaimaral');
       const jornadaNom = (jId && JORNADAS_MAP[jId]) ? JORNADAS_MAP[jId] : (d.jornada_nombre || 'Mañana');
+      const areaPrincipal = d.areas ? d.areas.split(',')[0].trim() : 'General';
+      const gradoPrincipal = d.grados ? d.grados.split(',')[0].trim() : '--';
 
-      if (missingWeeks.length > 0) {
-        syntheticNoEntrego.push({
-          id: `synthetic_no_${d.id}`,
-          docente_id: d.id,
-          docentes: d,
-          docente_nombre: d.nombre || 'Docente Institucional',
-          docente_doc: d.documento || '--',
-          sede_nombre: sedeNom,
-          jornada_nombre: jornadaNom,
-          area: d.areas ? d.areas.split(',')[0].trim() : 'General',
-          grado: d.grados ? d.grados.split(',')[0].trim() : '--',
-          numero_semana: missingWeeks.map(w => `Sem ${w}`).join(', '),
-          missing_count: missingWeeks.length,
-          fecha_subida: null,
-          fecha_aplicacion: null,
-          nombre_archivo: null,
-          observaciones: `Debe ${missingWeeks.length} semana(s): ${missingWeeks.map(w => 'Sem ' + w).join(', ')}`,
-          estado: 'no_entrego'
-        });
+      for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
+        if (w < MIN_SEMANA_LECTIVA) continue;
+        const esInst = instSet.has(w);
+        const plan = planesPorSemana.get(w);
+
+        if (esInst) {
+          semanasDetalle[w] = { estado: 'receso', texto: 'Receso Institucional' };
+        } else if (plan) {
+          semanasDetalle[w] = {
+            estado: plan.estado || 'a_tiempo',
+            texto: plan.estado === 'retraso' ? 'Con retraso' : 'A tiempo',
+            fecha_subida: plan.fecha_subida,
+            nombre_archivo: plan.nombre_archivo,
+            id: plan.id
+          };
+        } else {
+          missingWeeks.push(w);
+          semanasDetalle[w] = { estado: 'no_entrego', texto: 'No entregó' };
+
+          // Registro individual y limpio de faltante (1 fila por semana)
+          syntheticNoEntrego.push({
+            id: `missing_${d.id}_${w}`,
+            docente_id: d.id,
+            docentes: d,
+            docente_nombre: d.nombre || 'Docente Institucional',
+            docente_doc: d.documento || '--',
+            sede_nombre: sedeNom,
+            jornada_nombre: jornadaNom,
+            area: areaPrincipal,
+            grado: gradoPrincipal,
+            numero_semana: w,
+            missing_count: 1,
+            fecha_subida: null,
+            fecha_aplicacion: null,
+            nombre_archivo: null,
+            observaciones: `Pendiente de entrega (Semana ${w})`,
+            estado: 'no_entrego'
+          });
+        }
       }
 
-      // Preparar consolidado por docente
-      const docentePlanes = cleanRealPlanes.filter(p => String(p.docente_id) === String(d.id));
+      // Preparar consolidado y estadísticas por docente
       const aTiempoCount = docentePlanes.filter(p => p.estado === 'a_tiempo').length;
       const retrasoCount = docentePlanes.filter(p => p.estado === 'retraso').length;
-      const totalExigibles = (targetMaxWeek - targetMinWeek + 1) - instSet.size;
-      const totalEsperado = Math.max(totalExigibles, 1);
+      const semanasExigibles = (targetMaxWeek - targetMinWeek + 1) - instSet.size;
+      const totalEsperado = Math.max(semanasExigibles, 1);
       const porcentaje = Math.min(100, Math.round(((totalEsperado - missingWeeks.length) / totalEsperado) * 100));
 
       consolidadoDocentesMap.set(String(d.id), {
@@ -126,7 +158,8 @@ exports.getReporte = async (req, res) => {
         retraso: retrasoCount,
         faltantes_count: missingWeeks.length,
         semanas_debe: missingWeeks.length > 0 ? missingWeeks.map(w => `Sem ${w}`).join(', ') : 'Al día (0 faltantes)',
-        cumplimiento_pct: porcentaje
+        cumplimiento_pct: porcentaje,
+        semanas_detalle: semanasDetalle
       });
     });
 
@@ -137,7 +170,7 @@ exports.getReporte = async (req, res) => {
     } else if (estado) {
       allRecords = cleanRealPlanes.filter(r => r.estado === estado);
     } else {
-      // Por defecto: mostrar todas las entregadas + los registros de no_entrego
+      // Por defecto: mostrar todas las entregadas + los registros individuales de no_entrego
       allRecords = [...cleanRealPlanes, ...syntheticNoEntrego];
     }
 
@@ -224,6 +257,8 @@ exports.getReporte = async (req, res) => {
       total: totalCount,
       stats,
       consolidado_docentes: consolidadoDocentes,
+      semanas_evaluadas: semanasEvaluadas,
+      faltantes_individuales: syntheticNoEntrego,
       page,
       totalPages
     });

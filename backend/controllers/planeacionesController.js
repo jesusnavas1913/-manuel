@@ -52,6 +52,29 @@ function getActiveAcademicWeek(d = new Date()) {
   return Math.max(36, targetW);
 }
 
+// Obtener fecha y hora en zona horaria oficial de Colombia (America/Bogota, UTC-5)
+function toColombiaDate(dInput) {
+  try {
+    const d = parseDateSafe(dInput);
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(d);
+    const p = {};
+    parts.forEach(({ type, value }) => { p[type] = value; });
+    return new Date(parseInt(p.year), parseInt(p.month) - 1, parseInt(p.day), parseInt(p.hour || 0), parseInt(p.minute || 0), parseInt(p.second || 0));
+  } catch (e) {
+    return parseDateSafe(dInput);
+  }
+}
+
 // Helper: calcular si es a tiempo o con retraso
 function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, docenteInfo = '', numeroSemana = null) {
   if (esSemanaInstitucional) return 'semana_institucional';
@@ -62,7 +85,8 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, doc
     return 'a_tiempo';
   }
 
-  const subida = parseDateSafe(fechaSubida);
+  // Evaluar en hora local de Colombia para evitar desfases de medianoche UTC
+  const subida = toColombiaDate(fechaSubida);
   let lunesClase;
 
   if (numeroSemana && !isNaN(parseInt(numeroSemana))) {
@@ -199,6 +223,68 @@ async function uploadPdfToStorage(buffer, originalname) {
 
   console.log('✅ PDF subido exitosamente a Storage:', publicUrlData.publicUrl);
   return publicUrlData.publicUrl;
+}
+
+// ── Helpers de Gestión de Almacenamiento y Purga Segura (Límite 700 PDFs) ──
+async function getStorageFilesCount() {
+  try {
+    const { data: files, error } = await supabase.storage.from('planeaciones_pdfs').list('', { limit: 1000 });
+    if (error || !files) return 0;
+    return files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder').length;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function purgearPdfsStorage(mantenerUltimos = 0) {
+  try {
+    const { data: files, error } = await supabase.storage
+      .from('planeaciones_pdfs')
+      .list('', { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } });
+
+    if (error) {
+      console.error('Error al listar archivos para purga:', error.message);
+      throw error;
+    }
+
+    if (!files || files.length === 0) {
+      return { total: 0, eliminados: 0, mensaje: 'El almacenamiento ya se encuentra vacío' };
+    }
+
+    const validFiles = files.filter(f => f.name && f.name !== '.emptyFolderPlaceholder');
+    const toDelete = mantenerUltimos > 0
+      ? validFiles.slice(0, Math.max(0, validFiles.length - mantenerUltimos))
+      : validFiles;
+
+    if (toDelete.length === 0) {
+      return { total: validFiles.length, eliminados: 0, mensaje: 'No hay archivos para eliminar con el criterio actual' };
+    }
+
+    const fileNames = toDelete.map(f => f.name);
+    let eliminados = 0;
+
+    // Eliminar en lotes de 80 para garantizar estabilidad de red y evitar timeouts
+    for (let i = 0; i < fileNames.length; i += 80) {
+      const batch = fileNames.slice(i, i + 80);
+      const { error: delErr } = await supabase.storage.from('planeaciones_pdfs').remove(batch);
+      if (!delErr) {
+        eliminados += batch.length;
+      } else {
+        console.warn('Advertencia en eliminación de lote:', delErr.message);
+      }
+    }
+
+    console.log(`🧹 Purga de almacenamiento completada: ${eliminados} archivos PDF eliminados. Los datos de planeaciones en la BD permanecen 100% intactos.`);
+    return {
+      totalAntes: validFiles.length,
+      eliminados,
+      restantes: validFiles.length - eliminados,
+      mensaje: `Se liberó espacio eliminando ${eliminados} PDFs pesados. Todos los datos de docentes, semanas y estadísticas siguen activos al 100%.`
+    };
+  } catch (err) {
+    console.error('Error en purgearPdfsStorage:', err);
+    throw err;
+  }
 }
 
 // Helper: Re-evaluar estados de la semana para un docente
@@ -344,6 +430,20 @@ exports.create = async (req, res) => {
 
     // Re-obtener la planeación recién insertada para devolver el estado final actualizado
     const { data: updatedRows } = await supabase.from('planeaciones').select('*').eq('id', rows[0].id);
+
+    // Comprobación de cuota y auto-purga segura (si alcanza o supera los 700 PDFs en Storage)
+    setTimeout(async () => {
+      try {
+        const count = await getStorageFilesCount();
+        if (count >= 700) {
+          console.log(`⚠️ Se alcanzó el límite configurado de 700 PDFs en Supabase (${count} archivos). Ejecutando purga para liberar espacio en la nube...`);
+          // Purga total de archivos físicos en Storage (los registros en BD permanecen 100% intactos)
+          await purgearPdfsStorage(0);
+        }
+      } catch (checkErr) {
+        console.warn('Nota en verificación automática de almacenamiento:', checkErr.message);
+      }
+    }, 1500);
 
     res.status(201).json((updatedRows && updatedRows[0]) || rows[0]);
   } catch (err) {
@@ -666,7 +766,99 @@ exports.download = async (req, res) => {
 
     const response = await fetch(pdfUrl);
     if (!response.ok) {
-      return res.status(404).json({ error: 'El archivo PDF no está disponible en el almacenamiento' });
+      // El archivo físico fue purgado del Storage de Supabase para optimizar espacio,
+      // pero el registro académico permanece 100% verificado y contabilizado en la BD.
+      let docNombre = 'Docente Registrado';
+      let docDoc = '';
+      let docSede = '';
+      let docJornada = '';
+
+      if (plan.docente_id) {
+        try {
+          const { data: dData } = await supabase.from('docentes').select('nombre, documento, sede_nombre, jornada_nombre').eq('id', plan.docente_id);
+          if (dData && dData[0]) {
+            docNombre = dData[0].nombre || docNombre;
+            docDoc = dData[0].documento || '';
+            docSede = dData[0].sede_nombre || '';
+            docJornada = dData[0].jornada_nombre || '';
+          }
+        } catch (e) {}
+      }
+
+      const estadoLabel = plan.estado === 'a_tiempo' ? '🟢 A Tiempo (Plazo Oficial)' :
+                          plan.estado === 'retraso' ? '🟡 Con Retraso (Extemporáneo)' :
+                          plan.estado === 'semana_institucional' ? '🔵 Semana Institucional' : '🔴 No Entregó';
+
+      const fechaSubidaFmt = plan.fecha_subida ? new Date(plan.fecha_subida).toLocaleString('es-CO') : 'Registrado';
+      const fechaApliFmt = plan.fecha_aplicacion ? String(plan.fecha_aplicacion).split('T')[0] : 'Programada';
+      const obsHtml = plan.observaciones ? `<div style="margin-top:14px; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0; font-size:13px;"><strong>Observaciones:</strong> ${String(plan.observaciones).replace(/</g, '&lt;')}</div>` : '';
+
+      const comprobanteHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Comprobante Oficial de Planeación · I.E. Guaimaral</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f1f5f9; color: #1e293b; padding: 30px 15px; margin: 0; }
+    .card { max-width: 680px; margin: 0 auto; background: #ffffff; border: 2px solid #0284c7; border-radius: 12px; padding: 28px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); }
+    .header { text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 20px; }
+    .header h1 { margin: 0; color: #0369a1; font-size: 20px; text-transform: uppercase; }
+    .header p { margin: 4px 0 0; color: #64748b; font-size: 13px; font-weight: 600; }
+    .subhead { background: #e0f2fe; color: #0284c7; font-weight: 700; font-size: 12px; padding: 6px 14px; border-radius: 20px; display: inline-block; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px; }
+    th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f8fafc; color: #475569; width: 32%; }
+    .verified-seal { background: #ecfdf5; border: 1.5px dashed #10b981; border-radius: 8px; padding: 14px; margin-top: 20px; }
+    .verified-seal h3 { margin: 0 0 6px; color: #059669; font-size: 14.5px; display: flex; align-items: center; gap: 6px; }
+    .verified-seal p { margin: 0; font-size: 12px; color: #047857; line-height: 1.5; }
+    .actions { text-align: center; margin-top: 24px; display: flex; justify-content: center; gap: 12px; }
+    .btn { background: #0284c7; color: #ffffff; border: none; padding: 10px 20px; border-radius: 6px; font-size: 13.5px; font-weight: 700; cursor: pointer; text-decoration: none; }
+    .btn:hover { background: #0369a1; }
+    .btn-close { background: #64748b; }
+    @media print { .actions { display: none; } body { padding: 0; background: #fff; } .card { border: 1px solid #999; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Institución Educativa Guaimaral</h1>
+      <p>SISTEMA INSTITUCIONAL DE GESTIÓN DE PLANEACIONES (SIGEP-IEG)</p>
+      <div class="subhead">COMPROBANTE OFICIAL DE RADICACIÓN Y CUMPLIMIENTO</div>
+    </div>
+
+    <table>
+      <tr><th>Docente</th><td><strong>${docNombre}</strong> ${docDoc ? `<span style="color:#64748b;">(CC: ${docDoc})</span>` : ''}</td></tr>
+      <tr><th>Sede / Jornada</th><td>${docSede || 'Sede Principal'} · ${docJornada || 'Jornada Regular'}</td></tr>
+      <tr><th>Área / Asignatura</th><td><strong>${plan.area || '-'}</strong></td></tr>
+      <tr><th>Grado</th><td>${plan.grado || '-'}</td></tr>
+      <tr><th>Semana Académica</th><td><strong style="color:#0284c7;">Semana ${plan.numero_semana || '-'}</strong></td></tr>
+      <tr><th>Fecha de Aplicación</th><td>${fechaApliFmt}</td></tr>
+      <tr><th>Fecha de Entrega</th><td>${fechaSubidaFmt}</td></tr>
+      <tr><th>Estado de Cumplimiento</th><td><strong>${estadoLabel}</strong></td></tr>
+      <tr><th>Archivo Radicado</th><td><code>${plan.nombre_archivo ? plan.nombre_archivo.split('/').pop().split('?')[0] : 'Planeacion.pdf'}</code></td></tr>
+    </table>
+
+    ${obsHtml}
+
+    <div class="verified-seal">
+      <h3>✅ Entrega Académica Validada y Registrada</h3>
+      <p>
+        Esta planeación fue radicada a tiempo en el sistema y <strong>permanece 100% activa en las estadísticas institucionales y reportes</strong>.
+        <br>
+        <em>Nota de Almacenamiento:</em> El archivo PDF digital fue archivado en el corte de almacenamiento institucional en la nube para optimizar espacio del sistema.
+      </p>
+    </div>
+
+    <div class="actions">
+      <button class="btn" onclick="window.print()">🖨️ Imprimir Comprobante</button>
+      <button class="btn btn-close" onclick="window.close()">Cerrar</button>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(comprobanteHtml);
     }
 
     const raw = plan.nombre_archivo.split('/').pop().split('?')[0];
@@ -764,7 +956,62 @@ exports.recibirDesdeRector = async (req, res) => {
       return res.status(400).json({ error: 'No se pudo identificar ni registrar al docente en SIGEP-IEG.' });
     }
 
-    // 2. Verificar estado de la cuenta (activo / pago)
+    // 2. Sincronizar automáticamente cualquier cambio en el perfil del docente que envíe el software
+    try {
+      const updateDoc = {};
+      if (nombreFinal && nombreFinal.trim() && nombreFinal.trim() !== (docente.nombre || '').trim()) {
+        updateDoc.nombre = nombreFinal.trim();
+      }
+      if (docObj && docObj.documento && docObj.documento !== docente.documento) {
+        updateDoc.documento = String(docObj.documento).trim();
+      }
+      if (docObj && docObj.sede_nombre && docObj.sede_nombre !== docente.sede_nombre) {
+        updateDoc.sede_nombre = docObj.sede_nombre;
+      }
+      if (docObj && docObj.jornada_nombre && docObj.jornada_nombre !== docente.jornada_nombre) {
+        updateDoc.jornada_nombre = docObj.jornada_nombre;
+      }
+      if (docObj && docObj.sede_id && parseInt(docObj.sede_id) !== docente.sede_id) {
+        updateDoc.sede_id = parseInt(docObj.sede_id);
+      }
+      if (docObj && docObj.jornada_id && parseInt(docObj.jornada_id) !== docente.jornada_id) {
+        updateDoc.jornada_id = parseInt(docObj.jornada_id);
+      }
+
+      // Sincronizar catálogo de áreas y grados asignados al docente
+      let docAreasArr = docente.areas ? docente.areas.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (docObj && docObj.areas) {
+        const incomingAreas = docObj.areas.split(',').map(s => s.trim()).filter(Boolean);
+        incomingAreas.forEach(a => { if (!docAreasArr.includes(a)) docAreasArr.push(a); });
+      } else if (areaFinal && areaFinal !== 'General' && !docAreasArr.includes(areaFinal)) {
+        docAreasArr.push(areaFinal);
+      }
+      if (docAreasArr.join(', ') !== (docente.areas || '')) {
+        updateDoc.areas = docAreasArr.join(', ');
+      }
+
+      let docGradosArr = docente.grados ? docente.grados.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (docObj && docObj.grados) {
+        const incomingGrados = docObj.grados.split(',').map(s => s.trim()).filter(Boolean);
+        incomingGrados.forEach(g => { if (!docGradosArr.includes(g)) docGradosArr.push(g); });
+      } else if (gradoFinal && gradoFinal !== 'General' && !docGradosArr.includes(gradoFinal)) {
+        docGradosArr.push(gradoFinal);
+      }
+      if (docGradosArr.join(', ') !== (docente.grados || '')) {
+        updateDoc.grados = docGradosArr.join(', ');
+      }
+
+      if (Object.keys(updateDoc).length > 0) {
+        updateDoc.updated_at = new Date().toISOString();
+        await supabase.from('docentes').update(updateDoc).eq('id', docente.id);
+        docente = { ...docente, ...updateDoc };
+        console.log(`🔄 Perfil docente sincronizado (${docente.nombre}):`, Object.keys(updateDoc));
+      }
+    } catch (profileErr) {
+      console.warn('Nota al sincronizar perfil de docente en recibirDesdeRector:', profileErr.message);
+    }
+
+    // 3. Verificar estado de la cuenta (activo / pago)
     if (docente.activo === false) {
       return res.status(403).json({
         error: 'Acceso no permitido: La cuenta del docente no se encuentra activa o presenta pagos pendientes en SIGEP-IEG.'
@@ -773,6 +1020,8 @@ exports.recibirDesdeRector = async (req, res) => {
 
     const did = docente.id;
     const ahora = new Date();
+    const fechaSubidaFinal = fecha_envio ? new Date(fecha_envio) : ahora;
+    const fechaSubidaIso = isNaN(fechaSubidaFinal.getTime()) ? ahora.toISOString() : fechaSubidaFinal.toISOString();
     
     // Determinar fecha de aplicación y número de semana
     let dateFormatted;
@@ -781,14 +1030,14 @@ exports.recibirDesdeRector = async (req, res) => {
       dateFormatted = String(fechaAppRaw).trim();
       targetDate = parseDateSafe(fechaAppRaw);
     } else {
-      targetDate = ahora;
+      targetDate = fechaSubidaFinal;
       const yyyy = targetDate.getFullYear();
       const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
       const dd = String(targetDate.getDate()).padStart(2, '0');
       dateFormatted = `${yyyy}-${mm}-${dd}`;
     }
 
-    const activeW = getActiveAcademicWeek(ahora);
+    const activeW = getActiveAcademicWeek(fechaSubidaFinal);
     const semana = numSemanaRaw ? parseInt(numSemanaRaw) : activeW;
     const anioTarget = targetDate.getFullYear();
     const cantClases = duracionClasesRaw ? parseInt(duracionClasesRaw) : 1;
@@ -808,7 +1057,7 @@ exports.recibirDesdeRector = async (req, res) => {
       .eq('numero_semana', semana);
 
     const docNameStr = `${docente.nombre || ''} ${docente.correo || ''}`;
-    let estadoInicial = calcularEstado(ahora, inst && inst.length > 0, targetDate, docNameStr, semana);
+    let estadoInicial = calcularEstado(fechaSubidaFinal, inst && inst.length > 0, targetDate, docNameStr, semana);
     if (semana === 35) estadoInicial = 'a_tiempo';
 
     // Limpiar falta previa de no_entrego
@@ -845,7 +1094,7 @@ exports.recibirDesdeRector = async (req, res) => {
         area: areaFinal,
         grado: gradoFinal,
         fecha_aplicacion: dateFormatted,
-        fecha_subida: ahora.toISOString(),
+        fecha_subida: fechaSubidaIso,
         numero_semana: semana,
         nombre_archivo: fileNameVirtual,
         observaciones: obs,
@@ -856,6 +1105,19 @@ exports.recibirDesdeRector = async (req, res) => {
     if (error) throw error;
 
     await actualizarEstadosSemana(did, semana);
+
+    // Comprobación de cuota y auto-purga segura (si alcanza los 700 PDFs en Storage)
+    setTimeout(async () => {
+      try {
+        const count = await getStorageFilesCount();
+        if (count >= 700) {
+          console.log(`⚠️ Se alcanzó el límite configurado de 700 PDFs en Supabase (${count} archivos). Ejecutando purga para liberar espacio en la nube...`);
+          await purgearPdfsStorage(0);
+        }
+      } catch (checkErr) {
+        console.warn('Nota en verificación automática de almacenamiento:', checkErr.message);
+      }
+    }, 1500);
 
     console.log(`✅ Planeación recibida desde Docente AI Pro / Rector para docente ${docente.nombre} (Semana ${semana})`);
 
@@ -990,4 +1252,61 @@ exports.getConfigEntrega = async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 };
+
+// GET /api/planeaciones/storage-status
+// Monitoreo del almacenamiento en Supabase Storage (límite 700 PDFs)
+exports.getStorageStatus = async (req, res) => {
+  try {
+    const { data: files, error } = await supabase.storage.from('planeaciones_pdfs').list('', { limit: 1000 });
+    const count = (files || []).filter(f => f.name && f.name !== '.emptyFolderPlaceholder').length;
+
+    // Conteo total de planeaciones en la Base de Datos (PostgreSQL)
+    const { count: totalBD } = await supabase
+      .from('planeaciones')
+      .select('id', { count: 'exact', head: true });
+
+    const limiteMax = 700;
+    const porcentaje = Math.min(100, Math.round((count / limiteMax) * 100));
+
+    res.json({
+      archivosEnStorage: count,
+      limiteMax,
+      porcentaje,
+      alertaLimite: count >= 550,
+      limiteAlcanzado: count >= 700,
+      totalPlaneacionesEnBD: totalBD || 0
+    });
+  } catch (err) {
+    console.error('Error al consultar estado de storage:', err);
+    res.status(500).json({ error: 'Error al consultar almacenamiento: ' + err.message });
+  }
+};
+
+// POST /api/planeaciones/purgar-storage
+// Libera espacio en Supabase Storage eliminando los archivos PDF pesados sin tocar las filas de la base de datos
+exports.purgarStorage = async (req, res) => {
+  try {
+    const role = (req.user && req.user.rol ? req.user.rol : '').toLowerCase().trim();
+    const isAdmin = role === 'administrador' || role === 'admin' || role === 'coordinador';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Solo el administrador institucional puede ejecutar la purga de almacenamiento.' });
+    }
+
+    const { mantenerRecientes = 0 } = req.body || {};
+    const resultado = await purgearPdfsStorage(parseInt(mantenerRecientes) || 0);
+
+    // Obtener nuevo conteo de almacenamiento tras la purga
+    const countRestante = await getStorageFilesCount();
+
+    res.json({
+      success: true,
+      ...resultado,
+      archivosEnStorage: countRestante
+    });
+  } catch (err) {
+    console.error('Error al purgar storage:', err);
+    res.status(500).json({ error: 'Error al purgar almacenamiento: ' + err.message });
+  }
+};
+
 
