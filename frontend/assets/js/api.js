@@ -10,22 +10,36 @@ var API_BASE = window.API_BASE || (() => {
 })();
 window.API_BASE = API_BASE;
 
-var Storage = window.Storage || {
-  getToken: () => localStorage.getItem('sigep_token'),
-  getUser: () => {
-    const u = localStorage.getItem('sigep_user');
-    return u ? JSON.parse(u) : null;
+var SigepStorage = {
+  getToken: function() {
+    return localStorage.getItem('sigep_token');
   },
-  setSession: (token, user) => {
+  getUser: function() {
+    try {
+      const u = localStorage.getItem('sigep_user');
+      return u ? JSON.parse(u) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+  setSession: function(token, user) {
     localStorage.setItem('sigep_token', token);
     localStorage.setItem('sigep_user', JSON.stringify(user));
   },
-  clearSession: () => {
+  clearSession: function() {
     localStorage.removeItem('sigep_token');
     localStorage.removeItem('sigep_user');
   }
 };
-window.Storage = Storage;
+
+var Storage = SigepStorage;
+window.SigepStorage = SigepStorage;
+try {
+  window.Storage.getToken = SigepStorage.getToken;
+  window.Storage.getUser = SigepStorage.getUser;
+  window.Storage.setSession = SigepStorage.setSession;
+  window.Storage.clearSession = SigepStorage.clearSession;
+} catch (e) {}
 
 async function apiFetch(endpoint, options = {}) {
   const token = Storage.getToken();
@@ -53,8 +67,8 @@ async function apiFetch(endpoint, options = {}) {
 
     if (response.status === 401 && !endpoint.includes('/auth/login')) {
       Storage.clearSession();
-      if (!window.location.pathname.endsWith('index.html') && !window.location.pathname.endsWith('/')) {
-        window.location.href = 'index.html';
+      if (!window.location.pathname.endsWith('index.html') && !window.location.pathname.endsWith('/') && !window.location.pathname.endsWith('login.html')) {
+        window.location.href = 'login.html';
       }
       throw new Error('Sesión expirada o no autorizada');
     }

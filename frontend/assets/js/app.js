@@ -2,7 +2,7 @@ function requireSession() {
   const token = Storage.getToken();
   const user = Storage.getUser();
   const path = window.location.pathname.toLowerCase();
-  const isLoginPage = path.endsWith('index.html') || path.endsWith('/') || path === '';
+  const isLoginPage = path.endsWith('index.html') || path.endsWith('login.html') || path.endsWith('/') || path === '';
 
   if (!token && !isLoginPage) {
     window.location.replace('index.html');
