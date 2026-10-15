@@ -3,6 +3,7 @@ let currentPage = 1;
 let totalPages = 1;
 let totalItems = 0;
 let globalStats = null;
+let globalConsolidadoDocentes = [];
 
 // Sort logic requires server implementation in backend, or local sort.
 // For now we will sort locally on the current page data.
@@ -69,6 +70,7 @@ async function fetchReport(page = 1) {
     totalPages = res.totalPages || 1;
     totalItems = res.total || 0;
     globalStats = res.stats || null;
+    globalConsolidadoDocentes = res.consolidado_docentes || [];
 
     // Búsqueda en texto para la página actual
     const qSearch = (document.getElementById('fSearch').value || '').toLowerCase().trim();
@@ -327,6 +329,121 @@ function getFilterSummary() {
   const semanaText = semanaVal ? `Semana ${semanaVal}` : 'Todas las semanas';
 
   return { docenteText, sedeText, jornadaText, gradoText, estadoText, semanaText };
+}
+
+function exportConsolidadoDocentes() {
+  const data = globalConsolidadoDocentes;
+  if (!data || data.length === 0) {
+    showToast('No hay datos consolidados de docentes para exportar', 'error');
+    return;
+  }
+
+  const now = new Date();
+  const fechaGen = now.toLocaleString('es-CO');
+
+  const excelContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<!--[if gte mso 9]>
+<xml>
+<x:ExcelWorkbook>
+  <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+      <x:Name>Consolidado Docentes</x:Name>
+      <x:WorksheetOptions>
+        <x:DisplayGridlines/>
+      </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+  </x:ExcelWorksheets>
+</x:ExcelWorkbook>
+</xml>
+<![endif]-->
+<style>
+body { font-family: Arial, sans-serif; font-size: 11pt; }
+.title-main { background-color: #091e3a; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; vertical-align: middle; height: 45px; }
+.title-sub { background-color: #1e40af; color: #ffffff; font-size: 11pt; font-weight: bold; text-align: center; vertical-align: middle; height: 28px; }
+.title-desc { background-color: #eff6ff; color: #0f2d59; font-size: 10.5pt; font-weight: bold; text-align: center; vertical-align: middle; height: 25px; border: 1px solid #bfdbfe; }
+.meta-label { font-weight: bold; background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px; }
+.meta-val { background-color: #ffffff; color: #334155; border: 1px solid #cbd5e1; padding: 6px; }
+th { background-color: #091e3a; color: #ffffff; font-weight: bold; font-size: 10.5pt; border: 1px solid #091e3a; text-align: center; height: 35px; vertical-align: middle; }
+td { border: 1px solid #cbd5e1; font-size: 10pt; vertical-align: middle; padding: 6px 10px; }
+tr:nth-child(even) td { background-color: #f8fafc; }
+.badge-perfect { background-color: #dcfce7; color: #15803d; font-weight: bold; text-align: center; }
+.badge-warning { background-color: #fef9c3; color: #854d0e; font-weight: bold; text-align: center; }
+.badge-danger { background-color: #fee2e2; color: #991b1b; font-weight: bold; text-align: center; }
+</style>
+</head>
+<body>
+<table>
+<tr>
+  <td colspan="11" class="title-main">INSTITUCIÓN EDUCATIVA GUAIMARAL</td>
+</tr>
+<tr>
+  <td colspan="11" class="title-sub">SISTEMA DE GESTIÓN DE PLANEACIONES DIDÁCTICAS (SIGEP)</td>
+</tr>
+<tr>
+  <td colspan="11" class="title-desc">CONSOLIDADO OFICIAL DE CUMPLIMIENTO POR DOCENTE (ENTREGADAS Y FALTANTES)</td>
+</tr>
+<tr><td colspan="11" style="height: 10px; border:none;"></td></tr>
+
+<tr>
+  <td colspan="2" class="meta-label">Fecha de Generación:</td>
+  <td colspan="3" class="meta-val">${fechaGen}</td>
+  <td colspan="2" class="meta-label">Total Docentes Evaluados:</td>
+  <td colspan="4" class="meta-val"><b>${data.length} profesores</b></td>
+</tr>
+<tr><td colspan="11" style="height: 14px; border:none;"></td></tr>
+
+<thead>
+  <tr>
+    <th>Docente</th>
+    <th>Documento</th>
+    <th>Sede</th>
+    <th>Jornada</th>
+    <th>Áreas</th>
+    <th>Grados</th>
+    <th>Total Entregadas</th>
+    <th>A Tiempo</th>
+    <th>Con Retraso</th>
+    <th>Semanas que Debe (Faltantes)</th>
+    <th>% Cumplimiento</th>
+  </tr>
+</thead>
+<tbody>
+  ${data.map(d => {
+    let pctBadge = 'badge-perfect';
+    if (d.cumplimiento_pct < 60) pctBadge = 'badge-danger';
+    else if (d.cumplimiento_pct < 85) pctBadge = 'badge-warning';
+
+    return `
+      <tr>
+        <td><b>${d.docente_nombre || '-'}</b></td>
+        <td style="text-align: center;">${d.docente_doc || '-'}</td>
+        <td>${d.sede_nombre || '-'}</td>
+        <td>${d.jornada_nombre || '-'}</td>
+        <td>${d.areas || '-'}</td>
+        <td style="text-align: center;">${d.grados || '-'}</td>
+        <td style="text-align: center; font-weight: bold; color: #0f4c94;">${d.entregadas_total || 0}</td>
+        <td style="text-align: center; color: #15803d; font-weight: bold;">${d.a_tiempo || 0}</td>
+        <td style="text-align: center; color: #b45309; font-weight: bold;">${d.retraso || 0}</td>
+        <td style="${d.faltantes_count > 0 ? 'color: #dc2626; font-weight: bold;' : 'color: #15803d; font-weight: bold;'}">${d.semanas_debe}</td>
+        <td class="${pctBadge}">${d.cumplimiento_pct}%</td>
+      </tr>
+    `;
+  }).join('')}
+</tbody>
+</table>
+</body>
+</html>
+  `;
+
+  const blob = new Blob(['\ufeff' + excelContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `consolidado_docentes_guaimaral_${new Date().toISOString().slice(0, 10)}.xls`;
+  link.click();
+  showToast('Consolidado por docente descargado con éxito en Excel', 'success');
 }
 
 function exportExcel() {
