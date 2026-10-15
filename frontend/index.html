@@ -165,9 +165,9 @@
     /* ────────────────────────── RIGHT PANEL ───────────────────── */
     .right-panel {
       display: flex; flex-direction: column; justify-content: center;
-      padding: 64px 56px;
+      padding: 42px 48px;
       background: var(--navy);
-      position: relative; overflow: hidden;
+      position: relative; overflow-y: auto;
     }
 
     .right-panel::before {
@@ -266,6 +266,92 @@
       font-size: 11px; color: rgba(255,255,255,0.2); margin-top: 6px;
     }
 
+    /* ── COMUNICADO DOCENTES ────────────────────────── */
+    .teacher-notice-box {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(180, 83, 9, 0.1));
+      border: 1.5px solid rgba(245, 158, 11, 0.55);
+      border-radius: 18px;
+      padding: 24px 22px;
+      margin-bottom: 28px;
+      box-shadow: 0 16px 40px -10px rgba(245, 158, 11, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(16px);
+      position: relative;
+      overflow: hidden;
+      animation: noticePulseGlow 3s ease-in-out infinite alternate;
+    }
+    @keyframes noticePulseGlow {
+      from { box-shadow: 0 12px 30px -10px rgba(245, 158, 11, 0.2); }
+      to   { box-shadow: 0 18px 45px -8px rgba(245, 158, 11, 0.35); }
+    }
+    .teacher-notice-box::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3.5px;
+      background: linear-gradient(90deg, #f59e0b, #fef08a, #f59e0b);
+    }
+    .notice-top-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.18);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+    }
+    .pulsing-amber-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #f59e0b;
+      box-shadow: 0 0 10px #f59e0b;
+      animation: pulseAmber 1.4s infinite;
+    }
+    @keyframes pulseAmber {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.5); opacity: 0.5; }
+    }
+    .notice-headline {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.3px;
+    }
+    .notice-body-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #f1f5f9;
+      margin-bottom: 14px;
+    }
+    .notice-highlight-text {
+      background: rgba(15, 23, 42, 0.4);
+      border-left: 3.5px solid #f59e0b;
+      padding: 10px 14px;
+      border-radius: 0 10px 10px 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #fef08a;
+      margin-bottom: 14px;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-left-width: 3.5px;
+    }
+    .notice-footer-pill {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fcd34d;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     /* Toast */
     .toast-wrap { position: fixed; top: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
     .toast {
@@ -338,8 +424,8 @@
             <span class="desc">Docentes</span>
           </div>
           <div class="stat-item" id="s2">
-            <span class="num">100%</span>
-            <span class="desc">Disponible</span>
+            <span class="num" style="color: #f59e0b;">Ajuste</span>
+            <span class="desc">Mantenimiento</span>
           </div>
           <div class="stat-item" id="s3">
             <span class="num">2026</span>
@@ -348,7 +434,7 @@
         </div>
 
         <div class="badge-row">
-          <div class="badge"><div class="live-dot"></div> Sistema Activo</div>
+          <div class="badge" style="border-color: rgba(245,158,11,0.35); color: #f59e0b;"><div class="live-dot" style="background:#f59e0b; box-shadow:0 0 8px #f59e0b;"></div> Reactivación Hoy en la Tarde</div>
           <div class="badge">🔒 Acceso Seguro</div>
           <div class="badge">🏫 Guaimaral</div>
         </div>
@@ -357,12 +443,31 @@
 
     <!-- ───── RIGHT PANEL ───── -->
     <div class="right-panel" id="rightPanel">
+      
+      <!-- AVISO DESTACADO A LOS PROFESORES -->
+      <div class="teacher-notice-box" id="eNotice">
+        <div class="notice-top-tag">
+          <span class="pulsing-amber-dot"></span>
+          <span>COMUNICADO OFICIAL A DOCENTES</span>
+        </div>
+        <h3 class="notice-headline">📢 Estimados Profesores:</h3>
+        <p class="notice-body-text">
+          Les ofrecemos una sincera disculpa. Tuvimos un error técnico temporal en los servidores de la plataforma y nuestro equipo ya se encuentra realizando las labores de ajuste y optimización.
+        </p>
+        <div class="notice-highlight-text">
+          ⏰ <strong>Ya en las horas de la tarde la plataforma quedará nuevamente activada y 100% disponible para todos.</strong>
+        </div>
+        <div class="notice-footer-pill">
+          <span>🤝 ¡Muchas gracias por su valiosa paciencia y comprensión!</span>
+        </div>
+      </div>
+
       <div class="step-tag" id="eTag">Plataforma Institucional 2026</div>
 
       <div class="form-title" id="eTitle">
-        <h2>BIENVENIDO<br>DE VUELTA.</h2>
+        <h2>ACCESO INSTITUCIONAL</h2>
       </div>
-      <p class="form-subtitle" id="eSub">Ingrese sus credenciales institucionales para acceder al sistema de planeaciones.</p>
+      <p class="form-subtitle" id="eSub">Ingrese sus credenciales una vez restablecido el servicio.</p>
 
       <div class="divider" id="eDivider"></div>
 
