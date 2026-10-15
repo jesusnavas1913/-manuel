@@ -290,7 +290,7 @@ async function openDocenteExpedienteModalFromDocentesPage(docenteId, docenteNomb
               ${plans.map(p => {
                 let pdfUrl = p.nombre_archivo;
                 if (pdfUrl && !pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
-                  pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${p.nombre_archivo}`;
+                  pdfUrl = `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${p.nombre_archivo}`;
                 }
                 const rawName = p.nombre_archivo ? p.nombre_archivo.split('/').pop().split('?')[0].replace(/^\d+_[_\-]*/, '') : 'Planeacion.pdf';
                 const cleanName = rawName.endsWith('.pdf') ? rawName : `${rawName}.pdf`;

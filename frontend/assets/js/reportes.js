@@ -251,7 +251,7 @@ function getPdfUrlReportes(r) {
   if (r.nombre_archivo.startsWith('http://') || r.nombre_archivo.startsWith('https://')) {
     return r.nombre_archivo;
   }
-  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${r.nombre_archivo}`;
+  return `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${r.nombre_archivo}`;
 }
 
 function previewPdfModal(id) {

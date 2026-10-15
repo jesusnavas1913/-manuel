@@ -67,6 +67,20 @@ CREATE INDEX IF NOT EXISTS idx_planeaciones_estado ON planeaciones (estado);
 CREATE INDEX IF NOT EXISTS idx_docentes_correo ON docentes (correo);
 CREATE INDEX IF NOT EXISTS idx_docentes_documento ON docentes (documento);
 
+-- Deshabilitar RLS para permitir operaciones de la aplicación
+ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
+ALTER TABLE docentes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE planeaciones DISABLE ROW LEVEL SECURITY;
+ALTER TABLE semanas_institucionales DISABLE ROW LEVEL SECURITY;
+
+-- Crear el bucket de almacenamiento de PDFs
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('planeaciones_pdfs', 'planeaciones_pdfs', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Permitir acceso público de subida y lectura en el bucket
+CREATE POLICY "Public Access" ON storage.objects FOR ALL USING (bucket_id = 'planeaciones_pdfs');
+
 -- Usuario Administrador Oficial Inicial
 -- Contraseña por defecto: admin123 (hash bcrypt)
 INSERT INTO usuarios (nombre, correo, password_hash, rol, activo)

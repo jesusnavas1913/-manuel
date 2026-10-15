@@ -164,8 +164,8 @@ async function initPlaneacionesPage() {
 }
 
 const MIN_SEMANA_LECTIVA = 1; // Habilitar semanas completas del año escolar
-const SUPABASE_STORAGE_BUCKET_URL = 'https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/planeaciones_pdfs';
-const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1bHJic2FveHd1aWJzbGZobGVmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTMzNDAyMSwiZXhwIjoyMTAwOTEwMDIxfQ.MsQ9sTKtvodOT_gY2z3C1UeQQJJu8YqCs9RkRKATOOc';
+const SUPABASE_STORAGE_BUCKET_URL = 'https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/planeaciones_pdfs';
+const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhd3hqZGl3dGFta2N0cmh0cXpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjg3ODIsImV4cCI6MjEwNzY0NDc4Mn0.JlNRraj9g_JJQ6yRxtL20edTKVKylnxN-UBBJ7h0TrU';
 
 async function uploadPdfDirectToStorage(file) {
   if (file && file.size > 20 * 1024 * 1024) {
@@ -190,7 +190,7 @@ async function uploadPdfDirectToStorage(file) {
     throw new Error(errData.message || 'Error al subir el archivo PDF a almacenamiento');
   }
 
-  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
+  return `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
 }
 
 function parseLocalDate(str) {
@@ -1306,7 +1306,7 @@ function getPdfUrl(plan) {
     return plan.nombre_archivo;
   }
   // Construir URL pública de Supabase Storage para archivos guardados solo por nombre
-  return `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${plan.nombre_archivo}`;
+  return `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${plan.nombre_archivo}`;
 }
 
 function getCleanPdfFileName(plan) {

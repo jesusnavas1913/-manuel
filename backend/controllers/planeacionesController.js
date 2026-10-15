@@ -660,7 +660,7 @@ exports.download = async (req, res) => {
 
     let pdfUrl = plan.nombre_archivo;
     if (!pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
-      const baseSbUrl = process.env.SUPABASE_URL || 'https://bulrbsaoxwuibslfhlef.supabase.co';
+      const baseSbUrl = process.env.SUPABASE_URL || 'https://fawxjdiwtamkctrhtqzc.supabase.co';
       pdfUrl = `${baseSbUrl}/storage/v1/object/public/planeaciones_pdfs/${encodeURIComponent(plan.nombre_archivo)}`;
     }
 
