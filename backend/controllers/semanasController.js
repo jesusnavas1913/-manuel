@@ -13,7 +13,7 @@ exports.getAll = async (req, res) => {
     res.json(data || []);
   } catch (err) {
     console.error('Error al obtener semanas:', err);
-    res.status(500).json({ error: 'Error al obtener semanas institucionales' });
+    res.status(500).json({ error: err.message || 'Error al obtener semanas institucionales' });
   }
 };
 

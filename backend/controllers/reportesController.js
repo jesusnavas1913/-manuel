@@ -219,6 +219,6 @@ exports.getKPI = async (req, res) => {
     });
   } catch (err) {
     console.error('Error al calcular KPIs:', err);
-    res.status(500).json({ error: 'Error al calcular KPIs', details: err.message });
+    res.status(500).json({ error: err.message || 'Error al calcular KPIs' });
   }
 };

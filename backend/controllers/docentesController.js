@@ -21,7 +21,7 @@ exports.getAll = async (req, res) => {
     res.json(mapped);
   } catch (err) {
     console.error('Error al obtener docentes:', err);
-    res.status(500).json({ error: 'Error al obtener la lista de docentes' });
+    res.status(500).json({ error: err.message || 'Error al obtener la lista de docentes' });
   }
 };
 

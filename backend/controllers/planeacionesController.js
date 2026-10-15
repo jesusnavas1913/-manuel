@@ -156,7 +156,7 @@ exports.getAll = async (req, res) => {
     res.json(mapped);
   } catch (err) {
     console.error('Error al obtener planeaciones:', err);
-    res.status(500).json({ error: 'Error al obtener planeaciones', details: err.message });
+    res.status(500).json({ error: err.message || 'Error al obtener planeaciones' });
   }
 };
 

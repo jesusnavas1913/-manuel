@@ -1,16 +1,16 @@
 // ── API Base URL ──────────────────────────────────────────────
 // Local dev  → http://localhost:3001/api
 // Producción → /api  (Vercel enruta al backend serverless)
-const API_BASE = (() => {
+var API_BASE = window.API_BASE || (() => {
   const origin = window.location.origin;
   if (window.location.protocol === 'file:' || origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.') || origin.includes(':5500') || origin.includes(':8080') || origin.includes(':3000')) {
     return 'http://localhost:3001/api';
   }
   return '/api';
 })();
+window.API_BASE = API_BASE;
 
-
-const Storage = {
+var Storage = window.Storage || {
   getToken: () => localStorage.getItem('sigep_token'),
   getUser: () => {
     const u = localStorage.getItem('sigep_user');
@@ -25,6 +25,7 @@ const Storage = {
     localStorage.removeItem('sigep_user');
   }
 };
+window.Storage = Storage;
 
 async function apiFetch(endpoint, options = {}) {
   const token = Storage.getToken();
@@ -71,7 +72,7 @@ async function apiFetch(endpoint, options = {}) {
   }
 }
 
-const API = {
+var API = window.API || {
   Auth: {
     login: (correo, password) => apiFetch('/auth/login', {
       method: 'POST',
