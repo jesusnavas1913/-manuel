@@ -534,11 +534,17 @@ exports.reemplazar = async (req, res) => {
 exports.download = async (req, res) => {
   try {
     const planId = parseInt(req.params.id);
-    const { data: planRows } = await supabase.from('planeaciones').select('*, docentes(*)').eq('id', planId);
+    const { data: planRows } = await supabase.from('planeaciones').select('*').eq('id', planId);
     if (!planRows || planRows.length === 0) {
       return res.status(404).json({ error: 'Planeación no encontrada' });
     }
     const plan = planRows[0];
+    if (plan.docente_id) {
+      try {
+        const { data: dRows } = await supabase.from('docentes').select('*').eq('id', plan.docente_id);
+        if (dRows && dRows.length > 0) plan.docentes = dRows[0];
+      } catch (e) {}
+    }
 
     // Si es una planeación generada por Rector IA, servir vista imprimible oficial
     if (plan.observaciones && plan.observaciones.includes('[REVISION_IA_JSON]:')) {
@@ -654,7 +660,8 @@ exports.download = async (req, res) => {
 
     let pdfUrl = plan.nombre_archivo;
     if (!pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
-      pdfUrl = `https://bulrbsaoxwuibslfhlef.supabase.co/storage/v1/object/public/planeaciones_pdfs/${encodeURIComponent(plan.nombre_archivo)}`;
+      const baseSbUrl = process.env.SUPABASE_URL || 'https://bulrbsaoxwuibslfhlef.supabase.co';
+      pdfUrl = `${baseSbUrl}/storage/v1/object/public/planeaciones_pdfs/${encodeURIComponent(plan.nombre_archivo)}`;
     }
 
     const response = await fetch(pdfUrl);

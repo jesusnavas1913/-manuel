@@ -168,6 +168,9 @@ const SUPABASE_STORAGE_BUCKET_URL = 'https://bulrbsaoxwuibslfhlef.supabase.co/st
 const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1bHJic2FveHd1aWJzbGZobGVmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTMzNDAyMSwiZXhwIjoyMTAwOTEwMDIxfQ.MsQ9sTKtvodOT_gY2z3C1UeQQJJu8YqCs9RkRKATOOc';
 
 async function uploadPdfDirectToStorage(file) {
+  if (file && file.size > 20 * 1024 * 1024) {
+    throw new Error('El archivo PDF es demasiado pesado (máximo 20 MB). Por favor use un archivo PDF más liviano para no saturar el almacenamiento.');
+  }
   const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
   const uploadUrl = `${SUPABASE_STORAGE_BUCKET_URL}/${safeName}`;
 
