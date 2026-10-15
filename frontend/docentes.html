@@ -5,8 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>I.E. Guaimaral · Gestión de Docentes</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="assets/js/api.js"></script>
+  <script>
+    (function() {
+      try {
+        const u = Storage.getUser();
+        const t = Storage.getToken();
+        if (!t) {
+          window.location.replace('index.html');
+          return;
+        }
+        const role = (u && u.rol ? u.rol : '').toLowerCase().trim();
+        const isAdmin = !u?.docente_id && (role === 'administrador' || role === 'admin');
+        if (!isAdmin) {
+          window.location.replace('planeaciones.html');
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
-<body onload="requireSession(); initDocentesPage()">
+<body onload="if (!requireSession()) return; initDocentesPage()">
   <div class="app">
     <aside class="sidebar">
       <div class="brand">

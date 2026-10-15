@@ -50,6 +50,11 @@ exports.login = async (req, res) => {
 
     // 1. Intentar buscar directamente en tabla 'usuarios' (administradores o docentes)
     let user = null;
+    const isAdminExplicit = rawInput === 'admin' || 
+                            rawInput === 'administrador' || 
+                            rawInput === 'ieguaimaral' || 
+                            rawInput === 'ieguaimaral@guaimaral.edu.co' ||
+                            rawInput === 'admin@guaimaral.edu.co';
 
     // A) Búsqueda por correo exacto o username
     try {
@@ -65,8 +70,8 @@ exports.login = async (req, res) => {
       console.warn('Aviso consulta usuarios por correo:', e.message);
     }
 
-    // B) Si el usuario escribió 'admin' o 'administrador', buscar cualquier usuario administrador
-    if (!user && (rawInput === 'admin' || rawInput === 'administrador' || rawInput.startsWith('admin@') || rawInput.includes('ieguaimaral'))) {
+    // B) Si el usuario escribió explícitamente 'admin' o 'administrador', buscar el usuario administrador
+    if (!user && isAdminExplicit) {
       try {
         const { data: adminUsers } = await supabase
           .from('usuarios')
@@ -74,16 +79,15 @@ exports.login = async (req, res) => {
           .eq('rol', 'administrador');
 
         if (adminUsers && adminUsers.length > 0) {
-          // Preferir ieguaimaral o el primero
-          user = adminUsers.find(u => (u.correo || '').includes('ieguaimaral')) || adminUsers[0];
+          user = adminUsers.find(u => (u.correo || '').toLowerCase().includes('ieguaimaral')) || adminUsers[0];
         }
       } catch (e) {
         console.warn('Aviso búsqueda admin general:', e.message);
       }
     }
 
-    // C) Búsqueda por coincidencia de nombre en tabla 'usuarios'
-    if (!user) {
+    // C) Búsqueda por coincidencia de nombre o documento en tabla 'usuarios'
+    if (!user && !isAdminExplicit) {
       const firstPart = rawInput.split('@')[0].replace(/[._-]/g, ' ');
       try {
         const { data: byName } = await supabase
@@ -92,19 +96,21 @@ exports.login = async (req, res) => {
           .or(`nombre.ilike.%${firstPart}%,correo.ilike.%${firstPart}%`);
 
         if (byName && byName.length > 0) {
-          user = byName[0];
+          // Filtrar si alguno tiene docente_id o no es admin para evitar asignar admin accidentalmente
+          user = byName.find(u => u.docente_id || u.rol === 'docente') || byName[0];
         }
       } catch (e) {
         console.warn('Aviso búsqueda usuarios por nombre:', e.message);
       }
     }
 
-    // 2. Si no se encontró en usuarios, buscar en tabla 'docentes' y auto-crear en 'usuarios'
-    if (!user) {
+    // 2. Si no se encontró en usuarios y NO es admin explícito, buscar en tabla 'docentes' y auto-crear en 'usuarios'
+    if (!user && !isAdminExplicit) {
       let docMatch = null;
       const firstPart = rawInput.split('@')[0].replace(/[._-]/g, ' ');
 
       try {
+        // Buscar por correo
         const { data: dByMail } = await supabase
           .from('docentes')
           .select('*')
@@ -113,11 +119,22 @@ exports.login = async (req, res) => {
         if (dByMail && dByMail.length > 0) {
           docMatch = dByMail[0];
         } else {
-          const { data: dByName } = await supabase
+          // Buscar por documento / cédula
+          const { data: dByDoc } = await supabase
             .from('docentes')
             .select('*')
-            .or(`nombre.ilike.%${firstPart}%,correo.ilike.%${firstPart}%`);
-          if (dByName && dByName.length > 0) docMatch = dByName[0];
+            .eq('documento', rawInput);
+          
+          if (dByDoc && dByDoc.length > 0) {
+            docMatch = dByDoc[0];
+          } else {
+            // Buscar por nombre
+            const { data: dByName } = await supabase
+              .from('docentes')
+              .select('*')
+              .or(`nombre.ilike.%${firstPart}%,correo.ilike.%${firstPart}%`);
+            if (dByName && dByName.length > 0) docMatch = dByName[0];
+          }
         }
       } catch (docErr) {
         console.warn('Aviso consulta docentes:', docErr.message);
@@ -152,8 +169,8 @@ exports.login = async (req, res) => {
       }
     }
 
-    // 3. Fallback especial si ingresó como admin y la base de datos estaba vacía de admins
-    if (!user && (rawInput === 'admin' || rawInput === 'administrador' || rawInput.includes('ieguaimaral') || rawInput.includes('guaimaral.edu.co'))) {
+    // 3. Fallback especial ÚNICAMENTE si ingresó explícitamente con credenciales de administrador
+    if (!user && isAdminExplicit) {
       const hash = await bcrypt.hash('admin123', 10);
       user = {
         id: 1,
@@ -214,13 +231,20 @@ exports.login = async (req, res) => {
       await syncPasswordBoth(user.id, user.docente_id, user.correo, user.nombre, cleanPass);
     } catch (e) {}
 
-    // 6. Generar JWT de sesión
+    // 6. Generar JWT de sesión garantizando estricta separación de roles
+    // Un usuario solo es administrador si NO tiene docente_id y coincide con la cuenta administrativa oficial
+    const isStrictAdmin = !user.docente_id && 
+                          user.rol === 'administrador' && 
+                          ((user.correo || '').toLowerCase().includes('ieguaimaral') || isAdminExplicit);
+
+    const finalRole = isStrictAdmin ? 'administrador' : 'docente';
+
     const payload = {
       id: user.id || 1,
-      nombre: user.nombre || 'Usuario SIGEP',
+      nombre: user.nombre || (finalRole === 'administrador' ? 'I.E. Guaimaral' : 'Docente'),
       correo: user.correo || rawInput,
-      rol: user.rol || 'docente',
-      docente_id: user.docente_id || null
+      rol: finalRole,
+      docente_id: finalRole === 'docente' ? (user.docente_id || user.id) : null
     };
 
     const token = jwt.sign(payload, jwtSecret, { expiresIn: '8h' });

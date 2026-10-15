@@ -1,3 +1,11 @@
+function getRedirectUrlForUser(u) {
+  if (!u) return 'planeaciones.html';
+  const role = (u.rol || '').toLowerCase().trim();
+  const hasDocId = Boolean(u.docente_id);
+  const isAdmin = !hasDocId && (role === 'administrador' || role === 'admin');
+  return isAdmin ? 'dashboard.html' : 'planeaciones.html';
+}
+
 // Verificar sesión previa de forma segura sin bucles en blanco
 (async () => {
   try {
@@ -6,8 +14,8 @@
     if (token && _cu) {
       try {
         const me = await API.Auth.me();
-        if (me && me.rol) {
-          window.location.href = me.rol === 'docente' ? 'planeaciones.html' : 'dashboard.html';
+        if (me) {
+          window.location.href = getRedirectUrlForUser(me);
           return;
         }
       } catch (err) {
@@ -154,7 +162,7 @@ async function handleLogin(e) {
     Storage.setSession(data.token, data.user);
     showToast('Acceso concedido. Redirigiendo...', 'success');
     setTimeout(() => {
-      window.location.href = data.user?.rol === 'docente' ? 'planeaciones.html' : 'dashboard.html';
+      window.location.href = getRedirectUrlForUser(data.user);
     }, 700);
   } catch (err) {
     let errMsg = err.message || 'Credenciales incorrectas';

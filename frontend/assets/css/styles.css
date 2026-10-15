@@ -30,10 +30,10 @@
 }
 
 /* Regla estricta para ocultar menú administrativo a docentes */
-body.role-docente a[href="dashboard.html"],
-body.role-docente a[href="docentes.html"],
-body.role-docente a[href="calendario.html"],
-body.role-docente a[href="reportes.html"] {
+body.role-docente a[href*="dashboard"],
+body.role-docente a[href*="docentes"],
+body.role-docente a[href*="calendario"],
+body.role-docente a[href*="reportes"] {
   display: none !important;
 }
 

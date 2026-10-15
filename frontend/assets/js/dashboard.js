@@ -1,7 +1,16 @@
 let cachedDashboardDocentes = [];
 let cachedDashboardPlans = [];
+let cachedDashboardInstWeeks = [];
 let currentSelectedDashboardWeek = null;
 const EVALUACION_INICIO_SEMANA = 32;
+const DEFAULT_INST_WEEKS = [13, 25, 26, 41, 49, 50];
+
+function isDashboardWeekInstitutional(weekNumber) {
+  const w = parseInt(weekNumber, 10);
+  if (isNaN(w)) return false;
+  if (DEFAULT_INST_WEEKS.includes(w)) return true;
+  return (cachedDashboardInstWeeks || []).some(i => parseInt(i.numero_semana, 10) === w);
+}
 
 async function initDashboard() {
   const now = new Date();
@@ -38,15 +47,17 @@ async function initDashboard() {
     showToast('Error al obtener indicadores KPI', 'error');
   }
 
-  // Cargar planeaciones y docentes en paralelo
+  // Cargar planeaciones, docentes y semanas en paralelo
   try {
-    const [plans, docs] = await Promise.all([
+    const [plans, docs, instWeeks] = await Promise.all([
       API.Planeaciones.getAll().catch(e => { console.warn('Error cargando planeaciones:', e); return []; }),
-      API.Docentes.getAll().catch(e => { console.warn('Error cargando docentes:', e); return []; })
+      API.Docentes.getAll().catch(e => { console.warn('Error cargando docentes:', e); return []; }),
+      API.Semanas.getAll().catch(e => { console.warn('Error cargando semanas:', e); return []; })
     ]);
 
     cachedDashboardPlans = (Array.isArray(plans) ? plans : []).filter(p => p && typeof p === 'object');
     cachedDashboardDocentes = (Array.isArray(docs) ? docs : []).filter(d => d && typeof d === 'object');
+    cachedDashboardInstWeeks = Array.isArray(instWeeks) ? instWeeks : [];
 
     const tbody = document.getElementById('latestList');
     if (!cachedDashboardPlans || cachedDashboardPlans.length === 0) {
@@ -78,7 +89,11 @@ function populateDashboardWeekSelect(activeW) {
   for (let w = activeW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === activeW;
     const isSel = w === currentSelectedDashboardWeek;
-    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
+    const isInst = isDashboardWeekInstitutional(w);
+    let label = `Semana ${w}`;
+    if (isInst) label += ' (Institucional / Receso)';
+    else if (isCur) label += ' (Actual)';
+    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;
   }
   sel.innerHTML = optionsHtml;
 }
@@ -96,6 +111,7 @@ function applyDashboardWeeklyMetrics(targetW) {
 
   const validDocs = (cachedDashboardDocentes || []).filter(d => d && d.id !== undefined && d.id !== null);
   const validPlans = (cachedDashboardPlans || []).filter(p => p && p.docente_id !== undefined && p.docente_id !== null);
+  const isInst = isDashboardWeekInstitutional(targetW);
 
   validDocs.forEach(d => {
     const count = validPlans.filter(p => 
@@ -111,7 +127,34 @@ function applyDashboardWeeklyMetrics(targetW) {
   if (dashOk) dashOk.textContent = okCount;
 
   const dashPending = document.getElementById('dashWeekPendingCount');
-  if (dashPending) dashPending.textContent = pendingCount;
+  if (dashPending) {
+    dashPending.textContent = isInst ? '0 (Receso)' : pendingCount;
+  }
+
+  // Aviso Banner Informativo Dinámico para Semanas Institucionales
+  const statusBannerEl = document.getElementById('dashWeekStatusBanner');
+  if (statusBannerEl) {
+    if (isInst) {
+      statusBannerEl.style.display = 'block';
+      statusBannerEl.innerHTML = `
+        <div style="background: rgba(148, 163, 184, 0.12); border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 14px; animation: fadeIn 0.2s ease;">
+          <span style="font-size: 26px;">🏖️</span>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <strong style="color: var(--text-main, #f1f5f9); font-size: 14px;">Semana ${targetW}: Semana Institucional / Receso Escolar Oficial (Descanso)</strong>
+              <span style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(148, 163, 184, 0.25); color: #cbd5e1; font-weight: 700;">Descanso Oficial</span>
+            </div>
+            <p style="margin: 4px 0 0; color: var(--text-muted, #94a3b8); font-size: 12.5px; line-height: 1.4;">
+              Durante esta semana el calendario académico contempla receso estudiantil oficial. <strong>No se exige la entrega obligatoria de planeaciones didácticas ni se registran faltas</strong>. Las planeaciones visualizadas corresponden a cargas opcionales o preparatorias.
+            </p>
+          </div>
+        </div>
+      `;
+    } else {
+      statusBannerEl.style.display = 'none';
+      statusBannerEl.innerHTML = '';
+    }
+  }
 
   renderSedesAndJornadasCharts(validDocs, validPlans, targetW);
 }
@@ -145,6 +188,7 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
 
   const docentes = (Array.isArray(rawDocentes) ? rawDocentes : []).filter(d => d && d.id !== undefined && d.id !== null);
   const plans = (Array.isArray(rawPlans) ? rawPlans : []).filter(p => p && p.docente_id !== undefined && p.docente_id !== null);
+  const isInst = isDashboardWeekInstitutional(currentW);
 
   const sedesDef = [
     { id: 1, name: 'I.E. Guaimaral (Sede Principal)', keyName: 'guaimaral', color: '#0284c7', gradient: 'linear-gradient(135deg, #0284c7, #38bdf8)' },
@@ -179,9 +223,10 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     });
 
     const totalDoc = sedeDocentes.length;
-    const okDoc = sedeDocentes.filter(d => isDocenteOk(d.id)).length;
-    const pendingDoc = totalDoc - okDoc;
-    const pct = totalDoc > 0 ? Math.round((okDoc / totalDoc) * 100) : 0;
+    const optionalSubmissions = sedeDocentes.filter(d => isDocenteOk(d.id)).length;
+    const okDoc = isInst ? totalDoc : optionalSubmissions;
+    const pendingDoc = isInst ? 0 : (totalDoc - okDoc);
+    const pct = isInst ? 100 : (totalDoc > 0 ? Math.round((optionalSubmissions / totalDoc) * 100) : 0);
 
     const sedeDocenteIds = new Set(sedeDocentes.map(d => String(d.id)));
     const totalPlanesSede = plans.filter(p => 
@@ -196,12 +241,18 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const circ = 2 * Math.PI * r;
     const strokeDashoffset = circ - (pct / 100) * circ;
 
+    const badgeColor = isInst ? '#94a3b8' : s.color;
+    const badgeText = isInst ? `Semana ${currentW} · Receso Oficial` : `Semana ${currentW}`;
+    const donutColor = isInst ? '#94a3b8' : s.color;
+    const donutText = isInst ? '100%' : `${pct}%`;
+    const donutSubtext = isInst ? '<small style="display:block; font-size:9.5px; color:#94a3b8; font-weight:700;">Descanso</small>' : '';
+
     sedesHtml += `
-      <div style="background: var(--surface, #ffffff); border: 1px solid var(--border, #e2e8f0); border-radius: 14px; padding: 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
+      <div style="background: var(--surface, #ffffff); border: 1px solid ${isInst ? 'rgba(148,163,184,0.3)' : 'var(--border, #e2e8f0)'}; border-radius: 14px; padding: 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
           <div>
-            <span style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: rgba(56,189,248,0.12); color: ${s.color}; font-weight: 700;">
-              Semana ${currentW}
+            <span style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: ${isInst ? 'rgba(148,163,184,0.18)' : 'rgba(56,189,248,0.12)'}; color: ${badgeColor}; font-weight: 700;">
+              ${badgeText}
             </span>
             <h4 style="margin: 6px 0 2px; font-size: 15px; font-weight: 800; color: var(--text-main);">${s.name}</h4>
             <small style="color: var(--text-muted); font-size: 11.5px;">${totalDoc} Docentes Asignados</small>
@@ -211,12 +262,13 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
           <div style="position: relative; width: 75px; height: 75px; flex-shrink: 0;">
             <svg width="75" height="75" viewBox="0 0 100 100" style="transform: rotate(-90deg);">
               <circle cx="50" cy="50" r="${r}" fill="transparent" stroke="var(--border, #cbd5e1)" stroke-width="12"></circle>
-              <circle cx="50" cy="50" r="${r}" fill="transparent" stroke="${s.color}" stroke-width="12" 
+              <circle cx="50" cy="50" r="${r}" fill="transparent" stroke="${donutColor}" stroke-width="12" 
                       stroke-dasharray="${circ}" stroke-dashoffset="${strokeDashoffset}" stroke-linecap="round"
                       style="transition: stroke-dashoffset 0.8s ease;"></circle>
             </svg>
-            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 800; color: var(--text-main);">
-              ${pct}%
+            <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 800; color: var(--text-main);">
+              <span>${donutText}</span>
+              ${donutSubtext}
             </div>
           </div>
         </div>
@@ -224,23 +276,23 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
         <!-- Metrics Grid -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; margin-bottom: 12px; background: var(--bg, #f8fafc); padding: 10px; border-radius: 10px; border: 1px solid var(--border);">
           <div>
-            <span style="color: var(--text-muted); font-size: 11px; display: block;">🟢 Al Día</span>
-            <strong style="color: #10b981; font-size: 14px;">${okDoc}</strong>
+            <span style="color: var(--text-muted); font-size: 11px; display: block;">${isInst ? '⚪ Estado' : '🟢 Al Día'}</span>
+            <strong style="color: ${isInst ? '#94a3b8' : '#10b981'}; font-size: 13px;">${isInst ? 'Descanso Oficial' : okDoc}</strong>
           </div>
           <div>
-            <span style="color: var(--text-muted); font-size: 11px; display: block;">🔴 Faltantes</span>
-            <strong style="color: #ef4444; font-size: 14px;">${pendingDoc}</strong>
+            <span style="color: var(--text-muted); font-size: 11px; display: block;">${isInst ? '🔵 Subidas Opcionales' : '🔴 Faltantes'}</span>
+            <strong style="color: ${isInst ? '#38bdf8' : '#ef4444'}; font-size: 13px;">${isInst ? optionalSubmissions : pendingDoc}</strong>
           </div>
         </div>
 
         <!-- Barra de Progreso Dinámica -->
         <div>
           <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; margin-bottom: 4px;">
-            <span>Cumplimiento Docente</span>
+            <span>${isInst ? 'Semana de Receso Oficial (Sin exigencia)' : 'Cumplimiento Docente'}</span>
             <span>${totalPlanesSede} planeaciones subidas</span>
           </div>
           <div style="background: var(--border, #cbd5e1); height: 8px; border-radius: 4px; overflow: hidden;">
-            <div style="background: ${s.gradient}; height: 100%; width: ${pct}%; transition: width 0.6s ease;"></div>
+            <div style="background: ${isInst ? 'linear-gradient(135deg, #64748b, #94a3b8)' : s.gradient}; height: 100%; width: ${pct}%; transition: width 0.6s ease;"></div>
           </div>
         </div>
       </div>
@@ -260,8 +312,11 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     });
 
     const totalDoc = jDocentes.length;
-    const okDoc = jDocentes.filter(d => isDocenteOk(d.id)).length;
-    const pendingDoc = totalDoc - okDoc;
+    const optionalSubmissions = jDocentes.filter(d => isDocenteOk(d.id)).length;
+    const okDoc = isInst ? totalDoc : optionalSubmissions;
+    const pendingDoc = isInst ? 0 : (totalDoc - okDoc);
+    const jPct = isInst ? 100 : (totalDoc > 0 ? Math.round((optionalSubmissions / totalDoc) * 100) : 0);
+
     const jDocenteIds = new Set(jDocentes.map(d => String(d.id)));
     const totalPlanesJornada = plans.filter(p => 
       p &&
@@ -271,25 +326,25 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     ).length;
 
     jornadasHtml += `
-      <div style="background: var(--surface, #ffffff); border: 1px solid var(--border, #e2e8f0); border-radius: 14px; padding: 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
+      <div style="background: var(--surface, #ffffff); border: 1px solid ${isInst ? 'rgba(148,163,184,0.3)' : 'var(--border, #e2e8f0)'}; border-radius: 14px; padding: 18px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <div>
             <h4 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">${j.name}</h4>
-            <small style="color: var(--text-muted); font-size: 11.5px;">${totalDoc} Docentes • ${totalPlanesJornada} planeaciones</small>
+            <small style="color: var(--text-muted); font-size: 11.5px;">${totalDoc} Docentes • ${totalPlanesJornada} planeaciones subidas</small>
           </div>
-          <span style="font-size: 15px; font-weight: 800; color: ${j.color}; background: rgba(56,189,248,0.12); padding: 4px 10px; border-radius: 20px;">
-            ${pct}%
+          <span style="font-size: 14px; font-weight: 800; color: ${isInst ? '#94a3b8' : j.color}; background: ${isInst ? 'rgba(148,163,184,0.18)' : 'rgba(56,189,248,0.12)'}; padding: 4px 10px; border-radius: 20px;">
+            ${isInst ? '100% Receso' : `${jPct}%`}
           </span>
         </div>
 
         <div style="display: flex; gap: 10px; font-size: 12px; margin-bottom: 12px; background: var(--bg, #f8fafc); padding: 8px 12px; border-radius: 8px;">
-          <span>🟢 Al Día: <strong style="color: #10b981;">${okDoc}</strong></span>
-          <span style="margin-left: auto;">🔴 Pendientes: <strong style="color: #ef4444;">${pendingDoc}</strong></span>
+          <span>${isInst ? '⚪ Estado:' : '🟢 Al Día:'} <strong style="color: ${isInst ? '#94a3b8' : '#10b981'};">${isInst ? 'Descanso' : okDoc}</strong></span>
+          <span style="margin-left: auto;">${isInst ? '🔵 Opcionales:' : '🔴 Pendientes:'} <strong style="color: ${isInst ? '#38bdf8' : '#ef4444'};">${isInst ? optionalSubmissions : pendingDoc}</strong></span>
         </div>
 
         <div>
           <div style="background: var(--border, #cbd5e1); height: 8px; border-radius: 4px; overflow: hidden;">
-            <div style="background: ${j.gradient}; height: 100%; width: ${pct}%; transition: width 0.6s ease;"></div>
+            <div style="background: ${isInst ? 'linear-gradient(135deg, #64748b, #94a3b8)' : j.gradient}; height: 100%; width: ${jPct}%; transition: width 0.6s ease;"></div>
           </div>
         </div>
       </div>

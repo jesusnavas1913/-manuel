@@ -97,10 +97,10 @@ function calcularEstado(fechaSubida, esSemanaInstitucional, fechaAplicacion, doc
 // GET /api/planeaciones
 exports.getAll = async (req, res) => {
   try {
-    let query = supabase.from('planeaciones').select('*, docentes(*)').order('fecha_subida', { ascending: false });
+    let query = supabase.from('planeaciones').select('*').order('fecha_subida', { ascending: false });
 
-    // Si es docente, filtrar sus planeaciones
-    if (req.user.rol === 'docente') {
+    // Si es docente (por rol o por tener docente_id asociado), filtrar sus planeaciones
+    if (req.user.rol === 'docente' || Boolean(req.user.docente_id)) {
       let did = req.user.docente_id;
       if (!did) {
         try {
@@ -122,11 +122,24 @@ exports.getAll = async (req, res) => {
     }
 
     const { data: rows, error } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('Error al consultar planeaciones en Supabase:', error);
+      throw error;
+    }
+
+    // Obtener docentes de forma segura sin depender de relaciones automáticas de PostgREST
+    let docMap = new Map();
+    try {
+      const { data: docList } = await supabase.from('docentes').select('*');
+      if (docList && Array.isArray(docList)) {
+        docList.forEach(d => docMap.set(String(d.id), d));
+      }
+    } catch (dErr) {
+      console.warn('Aviso al obtener docentes para mapear planeaciones:', dErr.message);
+    }
 
     const mapped = (rows || []).map(p => {
-      const rawDoc = p.docentes;
-      const d = Array.isArray(rawDoc) ? (rawDoc[0] || {}) : (rawDoc || {});
+      const d = docMap.get(String(p.docente_id)) || {};
       const sId = (d && d.sede_id !== undefined && d.sede_id !== null) ? parseInt(d.sede_id) : null;
       const jId = (d && d.jornada_id !== undefined && d.jornada_id !== null) ? parseInt(d.jornada_id) : null;
 
@@ -142,8 +155,8 @@ exports.getAll = async (req, res) => {
 
     res.json(mapped);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al obtener planeaciones' });
+    console.error('Error al obtener planeaciones:', err);
+    res.status(500).json({ error: 'Error al obtener planeaciones', details: err.message });
   }
 };
 
@@ -220,10 +233,10 @@ async function actualizarEstadosSemana(docenteId, numeroSemana) {
 
 // POST /api/planeaciones
 exports.create = async (req, res) => {
-  let { docente_id, area, grado, fecha_aplicacion, numero_semana, nombre_archivo, observaciones } = req.body;
-  let did = req.user.rol === 'docente' ? (req.user.docente_id || docente_id) : docente_id;
+  const isDoc = req.user.rol === 'docente' || Boolean(req.user.docente_id);
+  let did = isDoc ? (req.user.docente_id || docente_id) : docente_id;
 
-  if (req.user.rol === 'docente' && (!did || isNaN(parseInt(did)))) {
+  if (isDoc && (!did || isNaN(parseInt(did)))) {
     try {
       const cleanMail = (req.user.correo || '').toLowerCase().trim();
       const cleanName = (req.user.nombre || '').toLowerCase().trim();
@@ -319,6 +332,7 @@ exports.create = async (req, res) => {
         numero_semana: semana, 
         nombre_archivo, 
         observaciones: observaciones || '', 
+        fecha_subida: ahora.toISOString(),
         estado: estadoInicial
       }])
       .select('*');
@@ -664,10 +678,13 @@ exports.download = async (req, res) => {
 };
 
 // POST /api/planeaciones/recibir
-// Recibe planeaciones generadas con IA desde la plataforma rector-2--main
+// Recibe planeaciones generadas con IA desde la plataforma de Planeaciones (Docente AI Pro / Rector 2.0)
 exports.recibirDesdeRector = async (req, res) => {
   try {
     const {
+      docente: docObj,
+      metadata: metaObj,
+      secuencia: secObj,
       docente_email,
       docente_nombre,
       area,
@@ -683,24 +700,41 @@ exports.recibirDesdeRector = async (req, res) => {
       fecha_envio
     } = req.body;
 
-    if (!docente_email && !docente_nombre) {
+    // Normalizar datos de docente (soporta estructura plana y anidada `docente`)
+    const emailFinal = docente_email || (docObj && (docObj.email || docObj.correo));
+    const nombreFinal = docente_nombre || (docObj && docObj.nombre);
+
+    if (!emailFinal && !nombreFinal) {
       return res.status(400).json({ error: 'Se requiere información del docente (correo o nombre).' });
     }
 
-    const cleanEmail = (docente_email || '').toLowerCase().trim();
-    const cleanName = (docente_nombre || '').toLowerCase().trim();
+    const cleanEmail = (emailFinal || '').toLowerCase().trim();
+    const cleanName = (nombreFinal || '').toLowerCase().trim();
     const firstPart = cleanEmail ? cleanEmail.split('@')[0].replace(/[._-]/g, ' ') : '';
+
+    // Normalizar metadata (soporta estructura plana y anidada `metadata`)
+    const areaFinal = area || (metaObj && metaObj.area) || 'General';
+    const gradoFinal = grado || (metaObj && metaObj.grado) || 'General';
+    const numSemanaRaw = numero_semana || (metaObj && (metaObj.numero_semana || metaObj.semana));
+    const fechaAppRaw = fecha_aplicacion || (metaObj && metaObj.fecha_aplicacion);
+    const duracionClasesRaw = duracion_clases || sesiones || (metaObj && (metaObj.duracion_clases || metaObj.sesiones));
+
+    // Normalizar secuencia pedagógica (soporta estructura plana y anidada `secuencia`)
+    const secuenciaFinal = secuencia_json || secObj;
+    const temaFinal = tema || (secObj && (secObj.titulo_secuencia || secObj.tema)) || (secuenciaFinal && secuenciaFinal.titulo_secuencia) || 'Planeacion_Didactica';
+    const tallerFinal = taller_imprimible || (secObj && secObj.taller_imprimible) || (secuenciaFinal && secuenciaFinal.taller_imprimible);
 
     // 1. Buscar docente en la base de datos
     let docente = null;
-    const { data: docs } = await supabase
-      .from('docentes')
-      .select('*')
-      .ilike('correo', cleanEmail);
+    if (cleanEmail) {
+      const { data: docs } = await supabase
+        .from('docentes')
+        .select('*')
+        .ilike('correo', cleanEmail);
+      if (docs && docs.length > 0) docente = docs[0];
+    }
 
-    if (docs && docs.length > 0) {
-      docente = docs[0];
-    } else {
+    if (!docente && (cleanName || firstPart)) {
       const searchTarget = cleanName || firstPart;
       const { data: dByName } = await supabase
         .from('docentes')
@@ -711,7 +745,7 @@ exports.recibirDesdeRector = async (req, res) => {
 
     if (!docente) {
       const { data: newDoc } = await supabase.from('docentes').insert([{
-        nombre: docente_nombre || (cleanEmail ? cleanEmail.split('@')[0] : 'Docente'),
+        nombre: nombreFinal || (cleanEmail ? cleanEmail.split('@')[0] : 'Docente'),
         correo: cleanEmail,
         clave_inicial: 'guaimaral2026',
         estado: 'activo'
@@ -736,9 +770,9 @@ exports.recibirDesdeRector = async (req, res) => {
     // Determinar fecha de aplicación y número de semana
     let dateFormatted;
     let targetDate;
-    if (fecha_aplicacion) {
-      dateFormatted = String(fecha_aplicacion).trim();
-      targetDate = parseDateSafe(fecha_aplicacion);
+    if (fechaAppRaw) {
+      dateFormatted = String(fechaAppRaw).trim();
+      targetDate = parseDateSafe(fechaAppRaw);
     } else {
       targetDate = ahora;
       const yyyy = targetDate.getFullYear();
@@ -748,9 +782,9 @@ exports.recibirDesdeRector = async (req, res) => {
     }
 
     const activeW = getActiveAcademicWeek(ahora);
-    const semana = numero_semana ? parseInt(numero_semana) : activeW;
+    const semana = numSemanaRaw ? parseInt(numSemanaRaw) : activeW;
     const anioTarget = targetDate.getFullYear();
-    const cantClases = duracion_clases ? parseInt(duracion_clases) : (sesiones ? parseInt(sesiones) : 1);
+    const cantClases = duracionClasesRaw ? parseInt(duracionClasesRaw) : 1;
 
     const maxSemanaPermitida = activeW + 1;
 
@@ -778,20 +812,20 @@ exports.recibirDesdeRector = async (req, res) => {
       .eq('numero_semana', semana)
       .eq('estado', 'no_entrego');
 
-    const cleanTema = (tema || 'Planeacion_Didactica')
+    const cleanTema = (temaFinal || 'Planeacion_Didactica')
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-zA-Z0-9_-]/g, '_');
     const fileNameVirtual = `Planeacion_IA_${cleanTema.substring(0, 45)}.pdf`;
 
     let obs = '';
-    if (secuencia_json) {
+    if (secuenciaFinal) {
       obs = '[REVISION_IA_JSON]:' + JSON.stringify({
-        tema: tema || '',
+        tema: temaFinal || '',
         periodo: periodo || '1',
         sesiones: cantClases,
-        secuencia: secuencia_json,
-        taller: taller_imprimible || null
+        secuencia: secuenciaFinal,
+        taller: tallerFinal || null
       });
     } else {
       obs = `Planeación generada con IA - ${cantClases} Clase(s)`;
@@ -801,8 +835,8 @@ exports.recibirDesdeRector = async (req, res) => {
       .from('planeaciones')
       .insert([{
         docente_id: did,
-        area: area || 'General',
-        grado: grado || 'General',
+        area: areaFinal,
+        grado: gradoFinal,
         fecha_aplicacion: dateFormatted,
         fecha_subida: ahora.toISOString(),
         numero_semana: semana,
@@ -816,7 +850,7 @@ exports.recibirDesdeRector = async (req, res) => {
 
     await actualizarEstadosSemana(did, semana);
 
-    console.log(`✅ Planeación recibida desde Rector 2.0 para docente ${docente.nombre} (Semana ${semana})`);
+    console.log(`✅ Planeación recibida desde Docente AI Pro / Rector para docente ${docente.nombre} (Semana ${semana})`);
 
     return res.status(201).json({
       ok: true,

@@ -23,6 +23,18 @@ async function verificarNoEntregados() {
       return;
     }
 
+    // Verificar si la semana actual es Semana Institucional (receso / descanso oficial)
+    const { data: inst } = await supabase
+      .from('semanas_institucionales')
+      .select('id, motivo')
+      .eq('anio', fecha.getFullYear())
+      .eq('numero_semana', semanaActual);
+
+    if (inst && inst.length > 0) {
+      console.log(`ℹ️ Cron Job: La semana actual (${semanaActual}) es SEMANA INSTITUCIONAL / RECESO (${inst[0].motivo || 'Descanso'}). No se exige entrega de planeación ni se marca 'no_entrego'.`);
+      return;
+    }
+
     for (let docente of (docentes || [])) {
       // Revisar si el docente tiene una planeación para esta semana
       const { data: planes, error: errPlanes } = await supabase

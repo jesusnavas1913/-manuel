@@ -24,10 +24,10 @@ exports.getReporte = async (req, res) => {
   const { docente_id, sede_id, jornada_id, grado, estado, semana, anio } = req.query;
 
   try {
-    // 1. Obtener todas las planeaciones reales
+    // 1. Obtener todas las planeaciones reales de forma segura
     const { data: realPlanes, error: pErr } = await supabase
       .from('planeaciones')
-      .select('*, docentes(*)');
+      .select('*');
     if (pErr) throw pErr;
 
     // 2. Obtener todos los docentes activos
@@ -36,6 +36,12 @@ exports.getReporte = async (req, res) => {
       .select('*')
       .eq('estado', 'activo');
     if (dErr) throw dErr;
+
+    // Mapear docentes en las planeaciones reales
+    const docMap = new Map((allDocentes || []).map(d => [String(d.id), d]));
+    (realPlanes || []).forEach(p => {
+      p.docentes = docMap.get(String(p.docente_id)) || null;
+    });
 
     const currentW = getActiveAcademicWeekBackend(new Date());
     const targetMaxWeek = semana ? parseInt(semana) : currentW;
@@ -51,13 +57,21 @@ exports.getReporte = async (req, res) => {
       }
     });
 
-    // 3. Generar entregas sintéticas de 'no_entrego' agrupadas por docente si se filtra por estado 'no_entrego'
+    // 3. Obtener semanas institucionales para no exigir entrega en semanas de descanso
+    const { data: instWeeks } = await supabase
+      .from('semanas_institucionales')
+      .select('numero_semana')
+      .eq('anio', new Date().getFullYear());
+    const instSet = new Set((instWeeks || []).map(i => parseInt(i.numero_semana, 10)));
+
+    // 4. Generar entregas sintéticas de 'no_entrego' agrupadas por docente si se filtra por estado 'no_entrego'
     const syntheticNoEntrego = [];
     if (estado === 'no_entrego') {
       (allDocentes || []).forEach(d => {
         const missingWeeks = [];
         for (let w = targetMinWeek; w <= targetMaxWeek; w++) {
           if (w < MIN_SEMANA_LECTIVA) continue;
+          if (instSet.has(w)) continue; // Omitir semana de descanso / receso
           const key = `${d.id}_${w}`;
           if (!realPlansMap.has(key)) {
             missingWeeks.push(w);
@@ -178,15 +192,22 @@ exports.getKPI = async (req, res) => {
   }
 
   try {
-    const { count: total_docentes } = await supabase.from('docentes').select('id', { count: 'exact', head: true });
+    const { count: total_docentes, error: docErr } = await supabase.from('docentes').select('id', { count: 'exact', head: true });
+    if (docErr) {
+      console.error('Error conteo docentes para KPI:', docErr);
+    }
     
     const { data: planes, error } = await supabase.from('planeaciones').select('estado');
-    if (error) throw error;
+    if (error) {
+      console.error('Error consulta planeaciones para KPI:', error);
+      throw error;
+    }
     
-    const a_tiempo = planes.filter(p => p.estado === 'a_tiempo').length;
-    const con_retraso = planes.filter(p => p.estado === 'retraso').length;
-    const no_entrego = planes.filter(p => p.estado === 'no_entrego').length;
-    const semana_institucional = planes.filter(p => p.estado === 'semana_institucional').length;
+    const validPlanes = Array.isArray(planes) ? planes : [];
+    const a_tiempo = validPlanes.filter(p => p.estado === 'a_tiempo').length;
+    const con_retraso = validPlanes.filter(p => p.estado === 'retraso').length;
+    const no_entrego = validPlanes.filter(p => p.estado === 'no_entrego').length;
+    const semana_institucional = validPlanes.filter(p => p.estado === 'semana_institucional').length;
 
     res.json({
       total_docentes: total_docentes || 0,
@@ -194,10 +215,10 @@ exports.getKPI = async (req, res) => {
       con_retraso,
       no_entrego,
       semana_institucional,
-      total_planeaciones: planes.length
+      total_planeaciones: validPlanes.length
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al calcular KPIs' });
+    console.error('Error al calcular KPIs:', err);
+    res.status(500).json({ error: 'Error al calcular KPIs', details: err.message });
   }
 };

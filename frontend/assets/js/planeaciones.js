@@ -120,8 +120,7 @@ async function initPlaneacionesPage() {
   const adminDocentesCard = document.getElementById('adminDocentesCard');
 
   const role = (user && user.rol ? user.rol : '').toLowerCase().trim();
-  const email = (user && user.correo ? user.correo : '').toLowerCase().trim();
-  const isAdmin = role === 'administrador' || role === 'admin' || email.includes('ieguaimaral') || email.includes('admin');
+  const isAdmin = !user?.docente_id && (role === 'administrador' || role === 'admin');
 
   if (isAdmin) {
     // Administrador: Mostrar listado completo de Docentes con su botón de Expediente de Planeaciones
@@ -311,16 +310,28 @@ let currentAdminDocenteFilter = 'all';
 let selectedAdminWeek = getActiveAcademicWeek();
 const EVALUACION_INICIO_SEMANA = 32;
 
+let institutionalWeeksData = [];
+const DEFAULT_INST_WEEKS = [13, 25, 26, 41, 49, 50];
+
+function isWeekInstitutional(weekNumber) {
+  const w = parseInt(weekNumber, 10);
+  if (isNaN(w)) return false;
+  if (DEFAULT_INST_WEEKS.includes(w)) return true;
+  return (institutionalWeeksData || []).some(i => parseInt(i.numero_semana, 10) === w);
+}
+
 async function loadAdminDocentes() {
   try {
-    const [docs, plans] = await Promise.all([
+    const [docs, plans, instWeeks] = await Promise.all([
       API.Docentes.getAll().catch(e => { console.error('Error docentes:', e); return []; }),
-      API.Planeaciones.getAll().catch(e => { console.error('Error planeaciones:', e); return []; })
+      API.Planeaciones.getAll().catch(e => { console.error('Error planeaciones:', e); return []; }),
+      API.Semanas.getAll().catch(e => { console.warn('Error semanas:', e); return []; })
     ]);
 
     adminDocentesData = Array.isArray(docs) ? docs : [];
     docentesList = adminDocentesData;
     allPlaneaciones = Array.isArray(plans) ? plans : [];
+    institutionalWeeksData = Array.isArray(instWeeks) ? instWeeks : [];
 
     // Llenar select de docentes en segundo plano para el modal
     const sel = document.getElementById('docenteId');
@@ -349,7 +360,11 @@ function populateAdminWeekSelect() {
   for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
     const isSel = w === selectedAdminWeek;
-    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>Semana ${w}${isCur ? ' (Actual)' : ''}</option>`;
+    const isInst = isWeekInstitutional(w);
+    let label = `Semana ${w}`;
+    if (isInst) label += ' (Institucional / Receso)';
+    else if (isCur) label += ' (Actual)';
+    optionsHtml += `<option value="${w}" ${isSel ? 'selected' : ''}>${label}</option>`;
   }
   sel.innerHTML = optionsHtml;
 }
@@ -363,10 +378,14 @@ function changeAdminSelectedWeek(val) {
 function updateAdminWeeklySummary() {
   const currentW = getActiveAcademicWeek();
   const targetW = selectedAdminWeek || currentW;
+  const isTargetInst = isWeekInstitutional(targetW);
 
   const currentWeekLabel = document.getElementById('adminCurrentWeekLabel');
   if (currentWeekLabel) {
-    currentWeekLabel.textContent = `Semana ${targetW}${targetW === currentW ? ' (Actual)' : ''}`;
+    let text = `Semana ${targetW}`;
+    if (isTargetInst) text += ' (Semana Institucional / Receso)';
+    else if (targetW === currentW) text += ' (Actual)';
+    currentWeekLabel.textContent = text;
   }
 
   let okCount = 0;
@@ -384,10 +403,14 @@ function updateAdminWeeklySummary() {
   });
 
   const statOk = document.getElementById('statDocentesOk');
-  if (statOk) statOk.textContent = `🟢 Entregaron: ${okCount}`;
+  if (statOk) {
+    statOk.textContent = isTargetInst ? `🔵 Subieron Opcional: ${okCount}` : `🟢 Entregaron: ${okCount}`;
+  }
 
   const statPending = document.getElementById('statDocentesPending');
-  if (statPending) statPending.textContent = `🔴 Sin Entregar: ${pendingCount}`;
+  if (statPending) {
+    statPending.textContent = isTargetInst ? `⚪ Receso Oficial (No exigible)` : `🔴 Sin Entregar: ${pendingCount}`;
+  }
 }
 
 function setAdminDocenteFilter(filterType) {
@@ -407,8 +430,10 @@ function setAdminDocenteFilter(filterType) {
 function filterAdminDocentes() {
   const q = (document.getElementById('searchAdminDocentes')?.value || '').toLowerCase().trim();
   const targetW = selectedAdminWeek || getActiveAcademicWeek();
+  const isTargetInst = isWeekInstitutional(targetW);
 
   let list = (adminDocentesData || []).filter(d => {
+    const stats = getDocenteComplianceStats(d.id, targetW);
     const deliveredCount = (allPlaneaciones || []).filter(p => 
       String(p.docente_id) === String(d.id) && 
       parseInt(p.numero_semana) === targetW && 
@@ -416,8 +441,12 @@ function filterAdminDocentes() {
     ).length;
     const hasWeekDelivery = deliveredCount >= 1;
 
-    if (currentAdminDocenteFilter === 'pending' && hasWeekDelivery) return false;
-    if (currentAdminDocenteFilter === 'ok' && !hasWeekDelivery) return false;
+    if (currentAdminDocenteFilter === 'pending') {
+      return isTargetInst ? stats.missingWeeks.length > 0 : !hasWeekDelivery;
+    }
+    if (currentAdminDocenteFilter === 'ok') {
+      return isTargetInst ? stats.missingWeeks.length === 0 : hasWeekDelivery;
+    }
     return true;
   });
 
@@ -456,6 +485,9 @@ function getDocenteComplianceStats(docenteId, targetWeek) {
 
   const missingWeeks = [];
   for (let w = startW; w <= targetWeek; w++) {
+    // Si la semana es institucional / receso escolar, NO se exige entrega y NO se cuenta como faltante
+    if (isWeekInstitutional(w)) continue;
+
     if ((weekCounts[w] || 0) < MIN_REQUERIDO) {
       missingWeeks.push(w);
     }
@@ -488,6 +520,7 @@ function renderAdminDocentes(list = adminDocentesData) {
   }
 
   const targetW = selectedAdminWeek || getActiveAcademicWeek();
+  const isTargetInst = isWeekInstitutional(targetW);
 
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(/[,;]+/).map(s => s.trim()).filter(Boolean).map(a => `<span class="badge-tag" style="display:inline-block; margin:2px; font-size:11px; padding:3px 8px; background:rgba(56,189,248,0.15); color:var(--primary-accent,#38bdf8); border-radius:6px;">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
@@ -496,7 +529,18 @@ function renderAdminDocentes(list = adminDocentesData) {
     const stats = getDocenteComplianceStats(d.id, targetW);
 
     let statusSemanaHtml = '';
-    if (stats.missingWeeks.length === 0) {
+    if (isTargetInst) {
+      if (stats.hasTargetWeekDelivery) {
+        statusSemanaHtml = `<span class="badge info" style="font-size:11px; padding:4px 10px; background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);">🔵 Semana institucional (Subió opcional)</span>`;
+      } else {
+        statusSemanaHtml = `<span class="badge" style="font-size:11px; padding:4px 10px; background:rgba(148,163,184,0.18); color:#94a3b8; border:1px solid rgba(148,163,184,0.35);">⚪ Semana Institucional / Receso</span>`;
+      }
+      if (stats.missingWeeks.length > 0) {
+        statusSemanaHtml += `<br><small style="color:#f59e0b; font-size:11px; font-weight:600;">Debe anteriores: ${stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}</small>`;
+      } else {
+        statusSemanaHtml += `<br><small style="color:var(--text-muted); font-size:11px;">Descanso oficial · Sin exigencia de entrega</small>`;
+      }
+    } else if (stats.missingWeeks.length === 0) {
       statusSemanaHtml = `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Al día (Sem ${targetW})</span><br><small style="color:var(--text-muted); font-size:11px;">Al día en todas las semanas (${stats.startW}-${targetW}) · Subidas: <strong>${stats.totalSubidas}</strong></small>`;
     } else if (stats.hasTargetWeekDelivery) {
       statusSemanaHtml = `<span class="badge ok" style="font-size:11px; padding:4px 10px;">🟢 Entregó (Sem ${targetW})</span><br><small style="color:#f59e0b; font-size:11px; font-weight:600;">Debe anteriores: ${stats.missingWeeks.map(w => `Sem ${w}`).join(', ')}</small>`;
@@ -527,7 +571,7 @@ function renderAdminDocentes(list = adminDocentesData) {
           <button class="btn btn-success" onclick="openAdminUploadModal('${d.id}')" style="padding: 6px 10px; font-size: 12px; font-weight: 700; background: #10b981; color: #ffffff; border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-right: 4px;" title="Subir planeación didáctica para este docente">
             ➕ Subir
           </button>
-          ${!stats.hasTargetWeekDelivery ? `
+          ${(!stats.hasTargetWeekDelivery && !isTargetInst) || (isTargetInst && stats.missingWeeks.length > 0) ? `
             <button class="btn btn-light" onclick="notifyDocenteReminder('${d.id}')" style="padding: 6px 10px; font-size: 12px; margin-right: 4px; background: rgba(239,68,68,0.1); color: #dc2626; border: 1px solid rgba(239,68,68,0.3); font-weight: 700;">
               💬 Recordatorio
             </button>
@@ -546,14 +590,21 @@ function renderAdminDocentes(list = adminDocentesData) {
 
 function openPreviewInformeModal() {
   const targetW = selectedAdminWeek || getActiveAcademicWeek();
+  const isTargetInst = isWeekInstitutional(targetW);
   
   const docentesWithStats = adminDocentesData.map(d => {
     const stats = getDocenteComplianceStats(d.id, targetW);
     return { docente: d, stats };
   });
 
-  const pendingRows = docentesWithStats.filter(item => !item.stats.hasTargetWeekDelivery);
-  const okRows = docentesWithStats.filter(item => item.stats.hasTargetWeekDelivery);
+  const pendingRows = docentesWithStats.filter(item => {
+    if (isTargetInst) return item.stats.missingWeeks.length > 0;
+    return !item.stats.hasTargetWeekDelivery;
+  });
+  const okRows = docentesWithStats.filter(item => {
+    if (isTargetInst) return item.stats.missingWeeks.length === 0;
+    return item.stats.hasTargetWeekDelivery;
+  });
 
   const currentW = getActiveAcademicWeek();
   const isCurrent = targetW === currentW;
@@ -955,7 +1006,7 @@ function openDocenteExpedienteModal(docenteId) {
                       <tr style="border-bottom:1px solid var(--border, #334155);">
                         <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
                         <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
-                        <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+                        <td style="padding:10px;">${fmtDateOnly(p.fecha_aplicacion)}</td>
                         <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
                         <td style="padding:10px;">${badge(p.estado)}</td>
                         <td style="padding:10px; text-align:center; white-space:nowrap;">
@@ -1162,7 +1213,9 @@ function renderDocenteAlertBanner(plans) {
   if (!banner) return;
 
   const user = Storage.getUser();
-  if (user && user.rol === 'administrador') {
+  const role = (user && user.rol ? user.rol : '').toLowerCase().trim();
+  const isAdmin = !user?.docente_id && (role === 'administrador' || role === 'admin');
+  if (isAdmin) {
     banner.style.display = 'none';
     return;
   }
@@ -1348,7 +1401,7 @@ function renderPlaneaciones(plans) {
           ${p.area || '-'}<br><small style="color:var(--text-muted)">${p.grado || '-'}</small>
           ${dur ? `<br><span style="display:inline-block; margin-top:2px; font-size:10px; padding:1px 6px; background:rgba(56,189,248,0.15); color:var(--primary-accent); border-radius:4px; font-weight:600;">⏱️ ${dur} ${parseInt(dur) === 1 ? 'clase' : 'clases'}</span>` : ''}
         </td>
-        <td style="padding: 8px 10px; white-space: nowrap;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+        <td style="padding: 8px 10px; white-space: nowrap;">${fmtDateOnly(p.fecha_aplicacion)}</td>
         <td style="padding: 8px 10px; white-space: nowrap; font-size: 11px;">${fmtDate(p.fecha_subida)}</td>
         <td style="padding: 8px 10px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${cleanName}">
           ${pdfUrl ? `
@@ -1412,7 +1465,7 @@ function viewPlanDetail(id) {
         <div><strong>Jornada:</strong><br>${plan.jornada_nombre || '-'}</div>
         <div><strong>Área / Asignatura:</strong><br>${plan.area || '-'}</div>
         <div><strong>Grado Académico:</strong><br>${plan.grado || '-'}</div>
-        <div><strong>Fecha Aplicación:</strong><br>${plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</div>
+        <div><strong>Fecha Aplicación:</strong><br>${fmtDateOnly(plan.fecha_aplicacion)}</div>
         <div><strong>Semana ISO:</strong><br>Semana ${plan.numero_semana || '-'}</div>
         <div><strong>Fecha Subida:</strong><br>${fmtDate(plan.fecha_subida)}</div>
         <div><strong>Estado:</strong><br>${badge(plan.estado)}</div>
@@ -1435,10 +1488,11 @@ function viewPlanDetail(id) {
 async function savePlaneacion(e) {
   e.preventDefault();
   let user = Storage.getUser();
-  let did = user && user.rol === 'docente' ? user.docente_id : parseInt(document.getElementById('docenteId')?.value);
+  const isDocente = user && (user.rol === 'docente' || Boolean(user.docente_id));
+  let did = isDocente ? user.docente_id : parseInt(document.getElementById('docenteId')?.value);
 
   // Si el docente no tiene docente_id en la sesión activa, vincularlo automáticamente por su correo o nombre
-  if (user && user.rol === 'docente' && (!did || isNaN(parseInt(did)))) {
+  if (isDocente && (!did || isNaN(parseInt(did)))) {
     try {
       const allDocs = await API.Docentes.getAll();
       const userMail = (user.correo || '').toLowerCase().trim();
@@ -1894,7 +1948,7 @@ function openReemplazarModal(planId) {
   if (existing) existing.remove();
 
   const user = Storage.getUser();
-  const isAdmin = user && user.rol === 'administrador';
+  const isAdmin = user && !user.docente_id && (user.rol === 'administrador' || user.rol === 'admin');
 
   const modal = document.createElement('div');
   modal.id = 'reemplazarModal';
@@ -1933,7 +1987,7 @@ function openReemplazarModal(planId) {
 
 async function ejecutarReemplazar(planId) {
   const user = Storage.getUser();
-  const isAdmin = user && user.rol === 'administrador';
+  const isAdmin = user && !user.docente_id && (user.rol === 'administrador' || user.rol === 'admin');
   const fileInput = document.getElementById('reemplazarArchivo');
   const pass = (document.getElementById('reemplazarPass')?.value || '').trim();
   const file = fileInput && fileInput.files[0];
@@ -2094,7 +2148,7 @@ function openPdfViewerModal(planId) {
               <span style="font-size:11px; padding:2px 8px; background:rgba(56,189,248,0.15); border-radius:12px; color:#38bdf8; font-weight:600;">Semana ${plan.numero_semana || '-'}</span>
             </h3>
             <small style="color:var(--text-muted, #94a3b8); font-size:12px;">
-              Docente: <strong>${plan.docente_nombre || 'Docente'}</strong> · Grado: ${plan.grado || '-'} · Aplicación: ${plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}
+              Docente: <strong>${plan.docente_nombre || 'Docente'}</strong> · Grado: ${plan.grado || '-'} · Aplicación: ${fmtDateOnly(plan.fecha_aplicacion)}
             </small>
           </div>
         </div>
@@ -2185,7 +2239,7 @@ function openSecuenciaViewerModal(planId) {
   const areaName = plan.area || metaData.area || '-';
   const gradoName = plan.grado || metaData.grado || '-';
   const temaName = secData.tema_principal || secData.titulo_secuencia || metaData.tema || plan.area || 'Planeación Didáctica';
-  const fechaApp = plan.fecha_aplicacion ? new Date(plan.fecha_aplicacion).toLocaleDateString('es-CO') : new Date().toLocaleDateString('es-CO');
+  const fechaApp = fmtDateOnly(plan.fecha_aplicacion);
   const numSesiones = metaData.sesiones || acts.length || 1;
 
   const modal = document.createElement("div");

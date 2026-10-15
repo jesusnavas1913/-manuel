@@ -1,25 +1,40 @@
 function requireSession() {
   const token = Storage.getToken();
   const user = Storage.getUser();
-  const isLoginPage = window.location.pathname.endsWith('index.html') || window.location.pathname.endsWith('/');
+  const path = window.location.pathname.toLowerCase();
+  const isLoginPage = path.endsWith('index.html') || path.endsWith('/') || path === '';
 
   if (!token && !isLoginPage) {
-    window.location.href = 'index.html';
-    return;
+    window.location.replace('index.html');
+    return false;
   }
 
   if (token && user) {
+    const role = (user.rol || '').toLowerCase().trim();
+    const isAdmin = !user.docente_id && (role === 'administrador' || role === 'admin');
+
+    // Verificar si está en una página administrativa restringida
+    const isAdminPage = path.includes('dashboard') || path.includes('docentes') || path.includes('calendario') || path.includes('reportes');
+
+    if (!isAdmin && isAdminPage) {
+      console.warn('Acceso denegado a módulo de administrador para rol:', role, '-> Redirigiendo a planeaciones.html');
+      window.location.replace('planeaciones.html');
+      return false;
+    }
+
     const userNameEl = document.getElementById('userName');
     const userRoleEl = document.getElementById('userRole');
     if (userNameEl) userNameEl.textContent = user.nombre || user.correo;
-    if (userRoleEl) userRoleEl.textContent = user.rol === 'administrador' ? 'Administrador' : 'Docente';
+    if (userRoleEl) userRoleEl.textContent = isAdmin ? 'Administrador' : 'Docente';
 
     injectChangePasswordButton();
     applyRolePermissions(user);
     initThemeToggle();
     initImpersonationBanner();
     initNotificationCenter();
+    return true;
   }
+  return true;
 }
 
 function initThemeToggle() {
@@ -164,20 +179,22 @@ async function handlePasswordChangeSubmit(e) {
 function applyRolePermissions(user) {
   if (!user) return;
   const path = window.location.pathname.toLowerCase();
+  const role = (user.rol || '').toLowerCase().trim();
+  const isAdmin = !user.docente_id && (role === 'administrador' || role === 'admin');
 
   // Agregar clase CSS al body para ocultamiento instantáneo y sin parpadeo
   document.body.classList.remove('role-admin', 'role-docente');
-  document.body.classList.add(user.rol === 'administrador' ? 'role-admin' : 'role-docente');
+  document.body.classList.add(isAdmin ? 'role-admin' : 'role-docente');
 
   const runHide = () => {
-    if (user.rol === 'docente') {
+    if (!isAdmin) {
       // Ocultar únicamente los enlaces de módulos administrativos para docentes
-      document.querySelectorAll('a[href="dashboard.html"], a[href="docentes.html"], a[href="calendario.html"], a[href="reportes.html"]').forEach(el => {
+      document.querySelectorAll('a[href*="dashboard"], a[href*="docentes"], a[href*="calendario"], a[href*="reportes"]').forEach(el => {
         el.style.display = 'none';
       });
 
       // Actualizar texto del enlace a Mis Planeaciones para docentes
-      const planLink = document.querySelector('a[href="planeaciones.html"]');
+      const planLink = document.querySelector('a[href*="planeaciones"]');
       if (planLink) {
         planLink.innerHTML = '<span>📁</span> Mis Planeaciones';
       }
@@ -187,8 +204,9 @@ function applyRolePermissions(user) {
       }
 
       // Proteger navegación directa por URL
-      if (path.endsWith('dashboard.html') || path.endsWith('docentes.html') || path.endsWith('calendario.html') || path.endsWith('reportes.html')) {
-        window.location.href = 'planeaciones.html';
+      const isAdminPage = path.includes('dashboard') || path.includes('docentes') || path.includes('calendario') || path.includes('reportes');
+      if (isAdminPage) {
+        window.location.replace('planeaciones.html');
       }
     }
   };
@@ -204,9 +222,46 @@ function logout() {
   window.location.href = 'index.html';
 }
 
+function fmtDateOnly(str) {
+  if (!str) return '-';
+  if (typeof str === 'string') {
+    const clean = str.split('T')[0].trim();
+    if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(clean)) {
+      const parts = clean.split(/[\/\-]/);
+      const yyyy = parts[0];
+      const mm = parseInt(parts[1], 10);
+      const dd = parseInt(parts[2], 10);
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(clean)) {
+      const parts = clean.split(/[\/\-]/);
+      const dd = parseInt(parts[0], 10);
+      const mm = parseInt(parts[1], 10);
+      const yyyy = parts[2];
+      return `${dd}/${mm}/${yyyy}`;
+    }
+  }
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return str;
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+}
+
 function fmtDate(isoStr) {
   if (!isoStr) return '-';
-  const d = new Date(isoStr);
+  let cleanStr = String(isoStr).trim();
+  if (!cleanStr) return '-';
+
+  // Si solo viene fecha (YYYY-MM-DD), no aplicar conversión de horas
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanStr)) {
+    return fmtDateOnly(cleanStr);
+  }
+
+  // Si no tiene sufijo de zona horaria (sin 'Z' ni offset +/-HH:MM), asumir UTC porque Supabase almacena en UTC
+  if (!cleanStr.endsWith('Z') && !/[+-]\d{2}(:\d{2})?$/.test(cleanStr)) {
+    cleanStr = cleanStr.replace(' ', 'T') + 'Z';
+  }
+
+  const d = new Date(cleanStr);
   if (isNaN(d.getTime())) return isoStr;
 
   try {
@@ -223,14 +278,16 @@ function fmtDate(isoStr) {
     formatted = formatted.replace(/a\.\s*m\./i, 'AM').replace(/p\.\s*m\./i, 'PM');
     return formatted;
   } catch (e) {
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    let hours = d.getHours();
-    const minutes = String(d.getMinutes()).padStart(2, '0');
+    // Fallback garantizado a hora de Colombia (UTC-5)
+    const utcMs = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const colDate = new Date(utcMs - (5 * 3600000));
+    const dd = String(colDate.getDate()).padStart(2, '0');
+    const mm = String(colDate.getMonth() + 1).padStart(2, '0');
+    const yyyy = colDate.getFullYear();
+    let hours = colDate.getHours();
+    const minutes = String(colDate.getMinutes()).padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
+    hours = hours % 12 || 12;
     const hh = String(hours).padStart(2, '0');
     return `${dd}/${mm}/${yyyy}, ${hh}:${minutes} ${ampm}`;
   }

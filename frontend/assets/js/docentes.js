@@ -192,7 +192,7 @@ function renderDocentes(list = docentesData) {
   }
 
   const currentUser = Storage.getUser();
-  const isAdmin = currentUser && currentUser.rol === 'administrador';
+  const isAdmin = currentUser && !currentUser.docente_id && (currentUser.rol === 'administrador' || currentUser.rol === 'admin');
 
   tbody.innerHTML = list.map(d => {
     const areasTags = d.areas ? d.areas.split(', ').map(a => `<span class="badge-tag">${a}</span>`).join('') : '<span style="color:var(--text-muted); font-size:12px;">Sin áreas</span>';
@@ -299,7 +299,7 @@ async function openDocenteExpedienteModalFromDocentesPage(docenteId, docenteNomb
                   <tr style="border-bottom:1px solid var(--border, #334155);">
                     <td style="padding:10px;"><strong>${p.area || '-'}</strong><br><small style="color:var(--text-muted);">${p.grado || '-'}</small></td>
                     <td style="padding:10px;">Semana ${p.numero_semana || '-'}</td>
-                    <td style="padding:10px;">${p.fecha_aplicacion ? new Date(p.fecha_aplicacion).toLocaleDateString('es-CO') : '-'}</td>
+                    <td style="padding:10px;">${fmtDateOnly(p.fecha_aplicacion)}</td>
                     <td style="padding:10px; font-size:11px;">${fmtDate(p.fecha_subida)}</td>
                     <td style="padding:10px;">${badge(p.estado)}</td>
                     <td style="padding:10px; text-align:center; white-space:nowrap;">
