@@ -1,4 +1,4 @@
-const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
+const { supabase, SEDES_MAP, JORNADAS_MAP, insertPlaneacionSegura } = require('../db');
 
 // Helper: Parsear fechas de forma limpia y segura sin lanzar RangeError
 function parseDateSafe(dStr) {
@@ -408,20 +408,17 @@ exports.create = async (req, res) => {
       .eq('numero_semana', semana)
       .eq('estado', 'no_entrego');
 
-    const { data: rows, error } = await supabase
-      .from('planeaciones')
-      .insert([{
-        docente_id: did, 
-        area: area || 'General', 
-        grado: grado || 'Transición', 
-        fecha_aplicacion: dateFormatted, 
-        numero_semana: semana, 
-        nombre_archivo, 
-        observaciones: observaciones || '', 
-        fecha_subida: ahora.toISOString(),
-        estado: estadoInicial
-      }])
-      .select('*');
+    const { data: rows, error } = await insertPlaneacionSegura({
+      docente_id: did, 
+      area: area || 'General', 
+      grado: grado || 'Transición', 
+      fecha_aplicacion: dateFormatted, 
+      numero_semana: semana, 
+      nombre_archivo, 
+      observaciones: observaciones || '', 
+      fecha_subida: ahora.toISOString(),
+      estado: estadoInicial
+    });
       
     if (error) throw error;
 
@@ -1087,20 +1084,17 @@ exports.recibirDesdeRector = async (req, res) => {
       obs = `Planeación generada con IA - ${cantClases} Clase(s)`;
     }
 
-    const { data: rows, error } = await supabase
-      .from('planeaciones')
-      .insert([{
-        docente_id: did,
-        area: areaFinal,
-        grado: gradoFinal,
-        fecha_aplicacion: dateFormatted,
-        fecha_subida: fechaSubidaIso,
-        numero_semana: semana,
-        nombre_archivo: fileNameVirtual,
-        observaciones: obs,
-        estado: estadoInicial
-      }])
-      .select('*');
+    const { data: rows, error } = await insertPlaneacionSegura({
+      docente_id: did,
+      area: areaFinal,
+      grado: gradoFinal,
+      fecha_aplicacion: dateFormatted,
+      fecha_subida: fechaSubidaIso,
+      numero_semana: semana,
+      nombre_archivo: fileNameVirtual,
+      observaciones: obs,
+      estado: estadoInicial
+    });
 
     if (error) throw error;
 

@@ -20,7 +20,46 @@ const JORNADAS_MAP = {
   3: 'Nocturna'
 };
 
+
+/**
+ * Inserta una planeación garantizando un ID incremental que no colisiona
+ * con registros históricos importados por CSV (evita error duplicate key planeaciones_pkey).
+ */
+async function insertPlaneacionSegura(row) {
+  let intentos = 0;
+  while (intentos < 5) {
+    intentos++;
+    try {
+      const { data: maxRows } = await supabase
+        .from('planeaciones')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1);
+
+      const nextId = (maxRows && maxRows.length > 0 && maxRows[0].id) ? (Number(maxRows[0].id) + 1) : 921;
+      const rowWithId = { ...row, id: nextId };
+
+      const { data, error } = await supabase
+        .from('planeaciones')
+        .insert([rowWithId])
+        .select('*');
+
+      if (!error) return { data, error: null };
+      if (error.code !== '23505') return { data: null, error };
+
+      // Si hubo colisión de clave primaria (23505), esperar brevemente y reintentar con nuevo MAX+1
+      await new Promise(r => setTimeout(r, 120));
+    } catch (e) {
+      if (intentos >= 5) throw e;
+    }
+  }
+
+  // Fallback
+  return await supabase.from('planeaciones').insert([row]).select('*');
+}
+
 module.exports = {
+  insertPlaneacionSegura,
   supabase,
   SEDES_MAP,
   JORNADAS_MAP

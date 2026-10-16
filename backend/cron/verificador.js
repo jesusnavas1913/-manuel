@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { supabase } = require('../db');
+const { supabase, insertPlaneacionSegura } = require('../db');
 
 // Función que revisa semanalmente los docentes que no entregaron
 async function verificarNoEntregados() {
@@ -50,18 +50,16 @@ async function verificarNoEntregados() {
         const fechaAppStr = ahora.toISOString().split('T')[0];
         const dummyFileName = `no_entrego_${docente.id}_sem${semanaActual}.pdf`;
 
-        await supabase
-          .from('planeaciones')
-          .insert([{
-            docente_id: docente.id,
-            area: 'N/A',
-            grado: 'N/A',
-            fecha_aplicacion: fechaAppStr,
-            numero_semana: semanaActual,
-            nombre_archivo: dummyFileName,
-            observaciones: 'Registro automático por el sistema: No entregó la planeación correspondiente a esta semana.',
-            estado: 'no_entrego'
-          }]);
+        await insertPlaneacionSegura({
+          docente_id: docente.id,
+          area: 'N/A',
+          grado: 'N/A',
+          fecha_aplicacion: fechaAppStr,
+          numero_semana: semanaActual,
+          nombre_archivo: dummyFileName,
+          observaciones: 'Registro automático por el sistema: No entregó la planeación correspondiente a esta semana.',
+          estado: 'no_entrego'
+        });
         console.log(`❌ Docente ID ${docente.id} marcado como 'no_entrego' para la semana ${semanaActual}.`);
       }
     }
