@@ -474,11 +474,13 @@ exports.create = async (req, res) => {
     const semana = parseInt(numero_semana) || activeW;
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : parseDateSafe(getMondayOfISOWeek(semana, ahora.getFullYear()));
 
-    const maxSemanaPermitida = activeW + 4; // Permitir hasta 4 semanas de preparación anticipada
+    const dayOfWeek = ahora.getDay();
+    const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
+    const maxSemanaPermitida = isFridayOrWeekend ? (activeW + 1) : activeW;
 
     if (req.user.rol === 'docente' && semana > maxSemanaPermitida) {
       return res.status(400).json({ 
-        error: `No está permitido registrar semanas futuras a más de 4 semanas de anticipación (Semana ${semana}). Semana máxima permitida actualmente: Semana ${maxSemanaPermitida}.` 
+        error: `No está permitido registrar semanas futuras (Semana ${semana}). Las semanas siguientes únicamente se habilitan cada viernes.` 
       });
     }
 
@@ -642,11 +644,13 @@ exports.update = async (req, res) => {
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
       const now = new Date();
       const currentW = getActiveAcademicWeek(now);
-      const maxW = currentW + 4;
+      const dayOfWeek = now.getDay();
+      const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
+      const maxW = isFridayOrWeekend ? (currentW + 1) : currentW;
 
       if (targetW > maxW) {
         return res.status(400).json({
-          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a más de 4 semanas de anticipación (Máximo Semana ${maxW}).`
+          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones para semanas futuras (Máximo Semana ${maxW}). Las semanas siguientes se habilitan los viernes.`
         });
       }
     }
@@ -1187,13 +1191,15 @@ exports.recibirDesdeRector = async (req, res) => {
     const anioTarget = targetDate.getFullYear();
     const cantClases = duracionClasesRaw ? parseInt(duracionClasesRaw) : 1;
 
-    const maxSemanaPermitida = activeW + 4; // Permitir planificación anticipada hasta con 4 semanas de margen
+    const dayOfWeek = fechaSubidaFinal.getDay();
+    const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
+    const maxSemanaPermitida = isFridayOrWeekend ? (activeW + 1) : activeW;
 
     if (semana > maxSemanaPermitida) {
       return res.status(400).json({ 
         ok: false,
         success: false,
-        error: `No está permitido registrar semanas futuras a más de 4 semanas de anticipación (Semana ${semana}). Semana máxima permitida actualmente: Semana ${maxSemanaPermitida}.` 
+        error: `No está permitido registrar semanas futuras (Semana ${semana}). Las semanas siguientes únicamente se habilitan cada viernes.` 
       });
     }
 
@@ -1413,7 +1419,9 @@ exports.getConfigEntrega = async (req, res) => {
       }
     }
 
-    const semanaAbiertaMax = currentW;
+    const dayOfWeek = now.getDay();
+    const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
+    const semanaAbiertaMax = isFridayOrWeekend ? (currentW + 1) : currentW;
 
     // Generar catálogo de semanas
     const EVALUACION_INICIO_SEMANA = 32;

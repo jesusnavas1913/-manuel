@@ -264,7 +264,8 @@ function populateDocenteWeekSelect() {
 
   let optionsHtml = '';
   // Permitir semanas futuras (planeación anticipada institucional)
-  const maxW = currentW + 2;
+  const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
+  const maxW = isFridayOrWeekend ? (currentW + 1) : currentW;
   for (let w = maxW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
     const isFuture = w > currentW;
