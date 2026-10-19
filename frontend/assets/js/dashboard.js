@@ -114,8 +114,9 @@ function applyDashboardWeeklyMetrics(targetW) {
   const isInst = isDashboardWeekInstitutional(targetW);
 
   validDocs.forEach(d => {
+    const targetIds = (d.linked_ids && d.linked_ids.length > 0) ? d.linked_ids.map(String) : [String(d.id)];
     const count = validPlans.filter(p => 
-      String(p.docente_id) === String(d.id) && 
+      targetIds.includes(String(p.docente_id)) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
@@ -203,9 +204,11 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
   ];
 
   const isDocenteOk = (did) => {
+    const doc = docentes.find(d => String(d.id) === String(did) || (d.linked_ids && d.linked_ids.map(String).includes(String(did))));
+    const targetIds = (doc && doc.linked_ids && doc.linked_ids.length > 0) ? doc.linked_ids.map(String) : [String(did)];
     const count = plans.filter(p => 
       p &&
-      String(p.docente_id) === String(did) && 
+      targetIds.includes(String(p.docente_id)) && 
       parseInt(p.numero_semana) === currentW && 
       p.estado !== 'no_entrego'
     ).length;
@@ -228,7 +231,11 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const pendingDoc = isInst ? 0 : (totalDoc - okDoc);
     const pct = isInst ? 100 : (totalDoc > 0 ? Math.round((optionalSubmissions / totalDoc) * 100) : 0);
 
-    const sedeDocenteIds = new Set(sedeDocentes.map(d => String(d.id)));
+    const sedeDocenteIds = new Set();
+    sedeDocentes.forEach(d => {
+      sedeDocenteIds.add(String(d.id));
+      if (d.linked_ids) d.linked_ids.forEach(id => sedeDocenteIds.add(String(id)));
+    });
     const totalPlanesSede = plans.filter(p => 
       p &&
       sedeDocenteIds.has(String(p.docente_id)) && 
@@ -317,7 +324,11 @@ function renderSedesAndJornadasCharts(rawDocentes, rawPlans, currentW) {
     const pendingDoc = isInst ? 0 : (totalDoc - okDoc);
     const jPct = isInst ? 100 : (totalDoc > 0 ? Math.round((optionalSubmissions / totalDoc) * 100) : 0);
 
-    const jDocenteIds = new Set(jDocentes.map(d => String(d.id)));
+    const jDocenteIds = new Set();
+    jDocentes.forEach(d => {
+      jDocenteIds.add(String(d.id));
+      if (d.linked_ids) d.linked_ids.forEach(id => jDocenteIds.add(String(id)));
+    });
     const totalPlanesJornada = plans.filter(p => 
       p &&
       jDocenteIds.has(String(p.docente_id)) && 

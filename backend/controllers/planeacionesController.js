@@ -614,8 +614,14 @@ exports.update = async (req, res) => {
     const plan = planRows[0];
 
     if (req.user.rol === 'docente') {
-      // Verificar que la planeación pertenece a este docente
-      if (plan.docente_id !== req.user.docente_id) {
+      let allowedDocIds = [parseInt(req.user.docente_id)];
+      try {
+        const canonical = await resolveDocenteSeguro({ id: req.user.docente_id, email: req.user.correo, nombre: req.user.nombre });
+        if (canonical && canonical.linked_ids) allowedDocIds = canonical.linked_ids.map(Number);
+      } catch (e) {}
+
+      // Verificar que la planeación pertenece a este docente o a sus identidades vinculadas
+      if (!allowedDocIds.includes(parseInt(plan.docente_id))) {
         return res.status(403).json({ error: 'No tiene permisos para editar esta planeación.' });
       }
       // Verificar contraseña obligatoriamente
@@ -630,17 +636,17 @@ exports.update = async (req, res) => {
     }
     // Administrador no necesita contraseña
 
-    // Verificar restricción de semana adelantada para docentes al actualizar (máximo 1 semana adelantada)
+    // Verificar restricción de semana adelantada para docentes al actualizar (hasta 4 semanas de preparación anticipada)
     if (req.user.rol === 'docente' && (fecha_aplicacion || numero_semana)) {
-      const targetD = fecha_aplicacion ? new Date(fecha_aplicacion) : new Date();
+      const targetD = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : new Date();
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
       const now = new Date();
-      const currentW = semanaISO(now);
-      const maxW = currentW + 1;
+      const currentW = getActiveAcademicWeek(now);
+      const maxW = currentW + 4;
 
       if (targetW > maxW) {
         return res.status(400).json({
-          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a más de 1 semana adelantada (Máximo Semana ${maxW}).`
+          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones a más de 4 semanas de anticipación (Máximo Semana ${maxW}).`
         });
       }
     }
@@ -690,7 +696,13 @@ exports.remove = async (req, res) => {
     const plan = planRows[0];
 
     if (req.user.rol === 'docente') {
-      if (plan.docente_id !== req.user.docente_id) {
+      let allowedDocIds = [parseInt(req.user.docente_id)];
+      try {
+        const canonical = await resolveDocenteSeguro({ id: req.user.docente_id, email: req.user.correo, nombre: req.user.nombre });
+        if (canonical && canonical.linked_ids) allowedDocIds = canonical.linked_ids.map(Number);
+      } catch (e) {}
+
+      if (!allowedDocIds.includes(parseInt(plan.docente_id))) {
         return res.status(403).json({ error: 'No puede eliminar planeaciones de otros docentes.' });
       }
       if (!password_confirmacion) {
@@ -747,7 +759,13 @@ exports.reemplazar = async (req, res) => {
     const plan = planRows[0];
 
     if (req.user.rol === 'docente') {
-      if (parseInt(plan.docente_id) !== parseInt(req.user.docente_id)) {
+      let allowedDocIds = [parseInt(req.user.docente_id)];
+      try {
+        const canonical = await resolveDocenteSeguro({ id: req.user.docente_id, email: req.user.correo, nombre: req.user.nombre });
+        if (canonical && canonical.linked_ids) allowedDocIds = canonical.linked_ids.map(Number);
+      } catch (e) {}
+
+      if (!allowedDocIds.includes(parseInt(plan.docente_id))) {
         return res.status(403).json({ error: 'No tiene permisos para reemplazar esta planeación.' });
       }
       if (!password_confirmacion) return res.status(400).json({ error: 'Debe confirmar su contraseña para reemplazar el archivo.' });
