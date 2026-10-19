@@ -24,8 +24,8 @@ router.get('/config-entrega', c.getConfigEntrega);
 router.post('/recibir', c.recibirDesdeRector);
 
 router.post('/', auth, upload.single('archivo'), [
-  body('area').notEmpty().withMessage('Área es requerida'),
-  body('grado').notEmpty().withMessage('Grado es requerido'),
+  body('area').trim().notEmpty().withMessage('Área es requerida'),
+  body('grado').trim().notEmpty().withMessage('Grado es requerido'),
   validateResult
 ], c.create);
 

@@ -1,4 +1,4 @@
-const { supabase, SEDES_MAP, JORNADAS_MAP } = require('../db');
+const { supabase, SEDES_MAP, JORNADAS_MAP, getCanonicalDocKey } = require('../db');
 
 function getActiveAcademicWeekBackend(d = new Date()) {
   const date = new Date(d.valueOf());
@@ -30,25 +30,59 @@ exports.getReporte = async (req, res) => {
       .select('*');
     if (pErr) throw pErr;
 
-    // 2. Obtener todos los docentes activos
-    const { data: allDocentes, error: dErr } = await supabase
+    // 2. Obtener todos los docentes activos y consolidar duplicados canónicamente
+    const { data: rawDocentes, error: dErr } = await supabase
       .from('docentes')
       .select('*')
       .eq('estado', 'activo');
     if (dErr) throw dErr;
 
-    // Mapear docentes en las planeaciones reales
-    const docMap = new Map((allDocentes || []).map(d => [String(d.id), d]));
+    const canonicalMap = new Map();
+    const docIdToCanonical = new Map();
+
+    (rawDocentes || []).forEach(d => {
+      const cKey = getCanonicalDocKey(d.nombre, d.correo);
+      if (!canonicalMap.has(cKey)) {
+        canonicalMap.set(cKey, {
+          ...d,
+          linked_ids: [d.id],
+          areasSet: new Set((d.areas || '').split(',').map(s => s.trim()).filter(Boolean)),
+          gradosSet: new Set((d.grados || '').split(',').map(s => s.trim()).filter(Boolean))
+        });
+      } else {
+        const exist = canonicalMap.get(cKey);
+        if (!exist.linked_ids.includes(d.id)) {
+          exist.linked_ids.push(d.id);
+        }
+        if (d.nombre && d.nombre.length > (exist.nombre || '').length) exist.nombre = d.nombre;
+        if (d.documento && !exist.documento) exist.documento = d.documento;
+        if (d.correo && !exist.correo) exist.correo = d.correo;
+        if (d.sede_id && !exist.sede_id) exist.sede_id = d.sede_id;
+        if (d.jornada_id && !exist.jornada_id) exist.jornada_id = d.jornada_id;
+        (d.areas || '').split(',').map(s => s.trim()).filter(Boolean).forEach(a => exist.areasSet.add(a));
+        (d.grados || '').split(',').map(s => s.trim()).filter(Boolean).forEach(g => exist.gradosSet.add(g));
+      }
+      docIdToCanonical.set(Number(d.id), cKey);
+      docIdToCanonical.set(String(d.id), cKey);
+    });
+
+    const allDocentes = Array.from(canonicalMap.values()).map(d => ({
+      ...d,
+      areas: Array.from(d.areasSet).join(', '),
+      grados: Array.from(d.gradosSet).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0)).join(', ')
+    }));
+
+    // Mapear docentes en las planeaciones reales asignando el docente canónico
     (realPlanes || []).forEach(p => {
-      p.docentes = docMap.get(String(p.docente_id)) || null;
+      const cKey = docIdToCanonical.get(Number(p.docente_id)) || docIdToCanonical.get(String(p.docente_id));
+      p.docentes = cKey ? canonicalMap.get(cKey) : null;
     });
 
     const currentW = getActiveAcademicWeekBackend(new Date());
     const targetMaxWeek = semana ? parseInt(semana) : currentW;
     const targetMinWeek = semana ? parseInt(semana) : MIN_SEMANA_LECTIVA;
 
-    // Map de entregas existentes por docente y semana
-    const realPlansMap = new Set();
+    // Map de entregas existentes por docente canónico y semana
     const cleanRealPlanes = (realPlanes || []).filter(p => p.estado !== 'no_entrego');
     
     cleanRealPlanes.forEach(p => {
@@ -81,8 +115,9 @@ exports.getReporte = async (req, res) => {
       const missingWeeks = [];
       const semanasDetalle = {};
 
-      // Mapear planeaciones del docente
-      const docentePlanes = cleanRealPlanes.filter(p => String(p.docente_id) === String(d.id));
+      // Mapear planeaciones del docente consolidado
+      const targetIds = (d.linked_ids && d.linked_ids.length > 0) ? d.linked_ids.map(Number) : [Number(d.id)];
+      const docentePlanes = cleanRealPlanes.filter(p => targetIds.includes(Number(p.docente_id)) || String(p.docente_id) === String(d.id));
       const planesPorSemana = new Map();
       docentePlanes.forEach(p => {
         if (p.numero_semana) {
@@ -147,6 +182,7 @@ exports.getReporte = async (req, res) => {
 
       consolidadoDocentesMap.set(String(d.id), {
         docente_id: d.id,
+        linked_ids: targetIds,
         docente_nombre: d.nombre || 'Docente Institucional',
         docente_doc: d.documento || '--',
         sede_nombre: sedeNom,
@@ -182,10 +218,14 @@ exports.getReporte = async (req, res) => {
         if (match) did = match.id;
       }
       if (did) {
-        allRecords = allRecords.filter(r => String(r.docente_id) === String(did));
+        const canonicalMatch = allDocentes.find(d => (d.linked_ids || []).map(Number).includes(Number(did)) || Number(d.id) === Number(did));
+        const allowedIds = canonicalMatch ? canonicalMatch.linked_ids.map(Number) : [Number(did)];
+        allRecords = allRecords.filter(r => allowedIds.includes(Number(r.docente_id)));
       }
     } else if (docente_id) {
-      allRecords = allRecords.filter(r => String(r.docente_id) === String(docente_id));
+      const canonicalMatch = allDocentes.find(d => (d.linked_ids || []).map(Number).includes(Number(docente_id)) || Number(d.id) === Number(docente_id));
+      const allowedIds = canonicalMatch ? canonicalMatch.linked_ids.map(Number) : [Number(docente_id)];
+      allRecords = allRecords.filter(r => allowedIds.includes(Number(r.docente_id)));
     }
 
     // 7. Aplicar Filtros Dinámicos
@@ -275,10 +315,15 @@ exports.getKPI = async (req, res) => {
   }
 
   try {
-    const { count: total_docentes, error: docErr } = await supabase.from('docentes').select('id', { count: 'exact', head: true });
+    const { data: rawDocentes, error: docErr } = await supabase
+      .from('docentes')
+      .select('id, nombre, correo')
+      .eq('estado', 'activo');
     if (docErr) {
       console.error('Error conteo docentes para KPI:', docErr);
     }
+    const uniqueCanonical = new Set((rawDocentes || []).map(d => getCanonicalDocKey(d.nombre, d.correo)));
+    const total_docentes = uniqueCanonical.size;
     
     const { data: planes, error } = await supabase.from('planeaciones').select('estado');
     if (error) {

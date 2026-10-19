@@ -121,6 +121,12 @@
                   <button type="button" id="btnFilterPending" onclick="setAdminDocenteFilter('pending')" class="btn btn-sm btn-light" style="padding: 6px 14px; font-size: 12px; border-radius: 7px; color: #dc2626; font-weight: 700;">🔴 Sin Entregar</button>
                   <button type="button" id="btnFilterOk" onclick="setAdminDocenteFilter('ok')" class="btn btn-sm btn-light" style="padding: 6px 14px; font-size: 12px; border-radius: 7px; color: #10b981; font-weight: 700;">🟢 Al Día</button>
                 </div>
+                <select id="selAdminSede" onchange="filterAdminDocentes()" style="padding: 7px 12px; border: 1.5px solid var(--border, #cbd5e1); border-radius: 10px; outline: none; font-size: 12.5px; background: var(--surface); color: var(--text-main); font-weight: 600;">
+                  <option value="">🏫 Todas las Sedes</option>
+                  <option value="I.E. Guaimaral">I.E. Guaimaral</option>
+                  <option value="Sede Cuatro Bocas">Sede Cuatro Bocas</option>
+                  <option value="Sede Altamira">Sede Altamira</option>
+                </select>
                 <input type="text" id="searchAdminDocentes" placeholder="🔍 Buscar docente..." oninput="filterAdminDocentes()" style="min-width: 220px; padding: 7px 14px; border: 1.5px solid var(--border, #cbd5e1); border-radius: 10px; outline: none; font-size: 12.5px; background: var(--surface); color: var(--text-main);">
               </div>
             </div>

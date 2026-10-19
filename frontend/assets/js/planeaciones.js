@@ -171,7 +171,8 @@ async function uploadPdfDirectToStorage(file) {
   if (file && file.size > 20 * 1024 * 1024) {
     throw new Error('El archivo PDF es demasiado pesado (máximo 20 MB). Por favor use un archivo PDF más liviano para no saturar el almacenamiento.');
   }
-  const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+  const rawClean = (file.name || 'planeacion.pdf').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const safeName = `${Date.now()}_${rawClean.toLowerCase().endsWith('.pdf') ? rawClean : `${rawClean}.pdf`}`;
   const uploadUrl = `${SUPABASE_STORAGE_BUCKET_URL}/${safeName}`;
 
   const res = await fetch(uploadUrl, {
@@ -262,10 +263,15 @@ function populateDocenteWeekSelect() {
   const defaultW = currentW;
 
   let optionsHtml = '';
-  for (let w = currentW; w >= EVALUACION_INICIO_SEMANA; w--) {
+  // Permitir semanas futuras (planeación anticipada institucional)
+  const maxW = currentW + 2;
+  for (let w = maxW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
+    const isFuture = w > currentW;
     let label = `Semana ${w}`;
-    if (isCur) {
+    if (isFuture) {
+      label = `Semana ${w} (Planeación Anticipada / Próxima Semana)`;
+    } else if (isCur) {
       if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
         label = `Semana ${w} (Semana Activa - Abierta desde Viernes)`;
       } else {
@@ -285,13 +291,10 @@ function populateDocenteWeekSelect() {
   const dateInput = document.getElementById('fechaAplicacion');
   if (dateInput) {
     dateInput.value = mondayDefaultStr;
-    const mondayObj = parseLocalDate(mondayDefaultStr);
-    const sundayObj = new Date(mondayObj);
-    sundayObj.setDate(sundayObj.getDate() + 6);
-    const yyyy = sundayObj.getFullYear();
-    const mm = String(sundayObj.getMonth() + 1).padStart(2, '0');
-    const dd = String(sundayObj.getDate()).padStart(2, '0');
-    dateInput.max = `${yyyy}-${mm}-${dd}`;
+    // Permitir hasta 45 días en el futuro para que el calendario nativo nunca bloquee planeaciones anticipadas
+    const maxFutureDate = new Date();
+    maxFutureDate.setDate(maxFutureDate.getDate() + 45);
+    dateInput.max = maxFutureDate.toISOString().split('T')[0];
     updateAutoSemanaHelper();
   }
 }
@@ -323,6 +326,68 @@ function isWeekInstitutional(weekNumber) {
   return (institutionalWeeksData || []).some(i => parseInt(i.numero_semana, 10) === w);
 }
 
+function canonicalizeDocentesList(docs) {
+  if (!Array.isArray(docs)) return [];
+  const map = new Map();
+  
+  docs.forEach(d => {
+    const rawName = (d.nombre || '').toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    
+    let key = rawName;
+    if (rawName.includes('jorge') && rawName.includes('ferrer')) key = 'jorge luis ferrer solano';
+    else if (rawName.includes('jorge') && rawName.includes('hoz')) key = 'jorge de la hoz maldonado';
+    else if (rawName.includes('carlos') && rawName.includes('sandoval')) key = 'carlos de jesus sandoval penaloza';
+    else if (rawName.includes('martin') && rawName.includes('celin')) key = 'martin alonso celin molinares';
+    else if (rawName.includes('jairo') && rawName.includes('benavides')) key = 'jairo alonso benavides bustillo';
+    else if (rawName.includes('jairo') && rawName.includes('blanco')) key = 'jairo enrique blanco nieto';
+    else if (rawName.includes('aleida') && rawName.includes('lara')) key = 'aleida ines lara castro';
+    else if (rawName.includes('rocio') && rawName.includes('ramirez')) key = 'rocio del carmen ramirez montiel';
+    else if (rawName.includes('liliana') && rawName.includes('valle')) key = 'liliana yazmin valle rodriguez';
+    else if (rawName.includes('estefany') && rawName.includes('verbel')) key = 'estefany paola verbel barreto';
+    else if (rawName.includes('evaristo') && rawName.includes('bertel')) key = 'evaristo jose bertel beleno';
+    else if (rawName.includes('ibeth') && rawName.includes('charris')) key = 'ibeth esther charris celin';
+    else if (rawName.includes('leovigilda') && rawName.includes('cuentas')) key = 'leovigilda cuentas ariza';
+    else if (rawName.includes('linda') && rawName.includes('varela')) key = 'linda patricia varela rodriguez';
+    else if (rawName.includes('nancy') && rawName.includes('vargas')) key = 'nancy esther vargas lara';
+    else if (rawName.includes('roberto') && rawName.includes('daza')) key = 'roberto carlos daza angulo';
+    else if (rawName.includes('alex') && rawName.includes('sanjuan')) key = 'alex enrique sanjuan pachon';
+    else if (rawName.includes('deisy') && rawName.includes('mercado')) key = 'deisy del carmen mercado vasquez';
+    else if (rawName.includes('paula') && rawName.includes('padilla')) key = 'paula andrea padilla roncallo';
+    else if (rawName.includes('asterio') && rawName.includes('torres')) key = 'asterio manuel torres gamez';
+    else if (rawName.includes('eduardo') && rawName.includes('alonso')) key = 'eduardo rafael alonso romero';
+    else if (!key && d.correo) key = d.correo.toLowerCase().trim().split('@')[0];
+
+    if (!map.has(key)) {
+      const linked = Array.isArray(d.linked_ids) ? [...d.linked_ids] : [d.id];
+      if (!linked.includes(d.id)) linked.push(d.id);
+      map.set(key, { ...d, linked_ids: linked });
+    } else {
+      const exist = map.get(key);
+      if (!exist.linked_ids.includes(d.id)) exist.linked_ids.push(d.id);
+      if (Array.isArray(d.linked_ids)) {
+        d.linked_ids.forEach(id => { if (!exist.linked_ids.includes(id)) exist.linked_ids.push(id); });
+      }
+      if ((d.nombre || '').length > (exist.nombre || '').length) exist.nombre = d.nombre;
+      if (d.documento && !exist.documento) exist.documento = d.documento;
+      if (d.correo && !exist.correo) exist.correo = d.correo;
+      if (d.sede_nombre && !exist.sede_nombre) exist.sede_nombre = d.sede_nombre;
+      
+      const aSet = new Set((exist.areas || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean));
+      (d.areas || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(a => aSet.add(a));
+      exist.areas = Array.from(aSet).join(', ');
+
+      const gSet = new Set((exist.grados || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean));
+      (d.grados || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(g => gSet.add(g));
+      exist.grados = Array.from(gSet).join(', ');
+    }
+  });
+
+  return Array.from(map.values());
+}
+
 async function loadAdminDocentes() {
   try {
     const [docs, plans, instWeeks] = await Promise.all([
@@ -331,7 +396,7 @@ async function loadAdminDocentes() {
       API.Semanas.getAll().catch(e => { console.warn('Error semanas:', e); return []; })
     ]);
 
-    adminDocentesData = Array.isArray(docs) ? docs : [];
+    adminDocentesData = canonicalizeDocentesList(Array.isArray(docs) ? docs : []);
     docentesList = adminDocentesData;
     allPlaneaciones = Array.isArray(plans) ? plans : [];
     institutionalWeeksData = Array.isArray(instWeeks) ? instWeeks : [];
@@ -395,8 +460,9 @@ function updateAdminWeeklySummary() {
   let pendingCount = 0;
 
   (adminDocentesData || []).forEach(d => {
+    const targetIds = (d.linked_ids && d.linked_ids.length > 0) ? d.linked_ids.map(String) : [String(d.id)];
     const deliveredCount = (allPlaneaciones || []).filter(p => 
-      String(p.docente_id) === String(d.id) && 
+      targetIds.includes(String(p.docente_id)) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
@@ -432,13 +498,15 @@ function setAdminDocenteFilter(filterType) {
 
 function filterAdminDocentes() {
   const q = (document.getElementById('searchAdminDocentes')?.value || '').toLowerCase().trim();
+  const sFilter = (document.getElementById('selAdminSede')?.value || '').toLowerCase().trim();
   const targetW = selectedAdminWeek || getActiveAcademicWeek();
   const isTargetInst = isWeekInstitutional(targetW);
 
   let list = (adminDocentesData || []).filter(d => {
     const stats = getDocenteComplianceStats(d.id, targetW);
+    const targetIds = (d.linked_ids && d.linked_ids.length > 0) ? d.linked_ids.map(String) : [String(d.id)];
     const deliveredCount = (allPlaneaciones || []).filter(p => 
-      String(p.docente_id) === String(d.id) && 
+      targetIds.includes(String(p.docente_id)) && 
       parseInt(p.numero_semana) === targetW && 
       p.estado !== 'no_entrego'
     ).length;
@@ -452,6 +520,10 @@ function filterAdminDocentes() {
     }
     return true;
   });
+
+  if (sFilter) {
+    list = list.filter(d => (d.sede_nombre || '').toLowerCase().includes(sFilter));
+  }
 
   if (q) {
     list = list.filter(d => 
@@ -469,7 +541,10 @@ function filterAdminDocentes() {
 
 function getDocenteComplianceStats(docenteId, targetWeek) {
   const MIN_REQUERIDO = 1;
-  const docPlans = (allPlaneaciones || []).filter(p => String(p.docente_id) === String(docenteId));
+  const doc = (adminDocentesData || []).find(d => String(d.id) === String(docenteId) || (d.linked_ids && d.linked_ids.map(String).includes(String(docenteId))));
+  const targetIds = (doc && doc.linked_ids && doc.linked_ids.length > 0) ? doc.linked_ids.map(String) : [String(docenteId)];
+
+  const docPlans = (allPlaneaciones || []).filter(p => targetIds.includes(String(p.docente_id)));
   const validPlans = docPlans.filter(p => p.estado !== 'no_entrego');
   const totalSubidas = validPlans.length;
 
@@ -910,9 +985,10 @@ async function deleteDocenteFromAdminTable(id) {
 }
 
 function openDocenteExpedienteModal(docenteId) {
-  const plans = allPlaneaciones.filter(p => String(p.docente_id) === String(docenteId));
-  const doc = adminDocentesData.find(d => String(d.id) === String(docenteId)) || (plans.length > 0 ? { nombre: plans[0].docente_nombre, sede_nombre: plans[0].sede_nombre, jornada_nombre: plans[0].jornada_nombre } : null);
-  const docName = doc ? doc.nombre : 'Docente';
+  const doc = (adminDocentesData || []).find(d => String(d.id) === String(docenteId) || (d.linked_ids && d.linked_ids.map(String).includes(String(docenteId))));
+  const targetIds = (doc && doc.linked_ids && doc.linked_ids.length > 0) ? doc.linked_ids.map(String) : [String(docenteId)];
+  const plans = allPlaneaciones.filter(p => targetIds.includes(String(p.docente_id)));
+  const docName = doc ? doc.nombre : (plans.length > 0 ? plans[0].docente_nombre : 'Docente');
 
   const docSede = (doc && doc.sede_nombre) || (plans.length > 0 && plans[0].sede_nombre) || 'I.E. Guaimaral';
   const docJornada = (doc && doc.jornada_nombre) || (plans.length > 0 && plans[0].jornada_nombre) || 'Mañana';
@@ -1585,8 +1661,8 @@ async function savePlaneacion(e) {
       // Subida ultra rápida por JSON (evita el límite de 4.5 MB de Vercel)
       await API.Planeaciones.create({
         docente_id: did,
-        area: document.getElementById('area').value.trim(),
-        grado: document.getElementById('grado').value.trim(),
+        area: areaVal,
+        grado: gradoVal,
         fecha_aplicacion: fechaAppStr,
         numero_semana: autoSemana,
         observaciones: obsFinal,
@@ -1596,8 +1672,8 @@ async function savePlaneacion(e) {
       // Fallback por FormData
       const payload = new FormData();
       payload.append('docente_id', did);
-      payload.append('area', document.getElementById('area').value.trim());
-      payload.append('grado', document.getElementById('grado').value.trim());
+      payload.append('area', areaVal);
+      payload.append('grado', gradoVal);
       payload.append('fecha_aplicacion', fechaAppStr);
       payload.append('numero_semana', autoSemana);
       payload.append('observaciones', obsFinal);

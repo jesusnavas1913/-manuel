@@ -154,9 +154,72 @@ async function loadOptions() {
   }
 }
 
+function canonicalizeDocentesList(docs) {
+  if (!Array.isArray(docs)) return [];
+  const map = new Map();
+  
+  docs.forEach(d => {
+    const rawName = (d.nombre || '').toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+    
+    let key = rawName;
+    if (rawName.includes('jorge') && rawName.includes('ferrer')) key = 'jorge luis ferrer solano';
+    else if (rawName.includes('jorge') && rawName.includes('hoz')) key = 'jorge de la hoz maldonado';
+    else if (rawName.includes('carlos') && rawName.includes('sandoval')) key = 'carlos de jesus sandoval penaloza';
+    else if (rawName.includes('martin') && rawName.includes('celin')) key = 'martin alonso celin molinares';
+    else if (rawName.includes('jairo') && rawName.includes('benavides')) key = 'jairo alonso benavides bustillo';
+    else if (rawName.includes('jairo') && rawName.includes('blanco')) key = 'jairo enrique blanco nieto';
+    else if (rawName.includes('aleida') && rawName.includes('lara')) key = 'aleida ines lara castro';
+    else if (rawName.includes('rocio') && rawName.includes('ramirez')) key = 'rocio del carmen ramirez montiel';
+    else if (rawName.includes('liliana') && rawName.includes('valle')) key = 'liliana yazmin valle rodriguez';
+    else if (rawName.includes('estefany') && rawName.includes('verbel')) key = 'estefany paola verbel barreto';
+    else if (rawName.includes('evaristo') && rawName.includes('bertel')) key = 'evaristo jose bertel beleno';
+    else if (rawName.includes('ibeth') && rawName.includes('charris')) key = 'ibeth esther charris celin';
+    else if (rawName.includes('leovigilda') && rawName.includes('cuentas')) key = 'leovigilda cuentas ariza';
+    else if (rawName.includes('linda') && rawName.includes('varela')) key = 'linda patricia varela rodriguez';
+    else if (rawName.includes('nancy') && rawName.includes('vargas')) key = 'nancy esther vargas lara';
+    else if (rawName.includes('roberto') && rawName.includes('daza')) key = 'roberto carlos daza angulo';
+    else if (rawName.includes('alex') && rawName.includes('sanjuan')) key = 'alex enrique sanjuan pachon';
+    else if (rawName.includes('deisy') && rawName.includes('mercado')) key = 'deisy del carmen mercado vasquez';
+    else if (rawName.includes('paula') && rawName.includes('padilla')) key = 'paula andrea padilla roncallo';
+    else if (rawName.includes('asterio') && rawName.includes('torres')) key = 'asterio manuel torres gamez';
+    else if (rawName.includes('eduardo') && rawName.includes('alonso')) key = 'eduardo rafael alonso romero';
+    else if (!key && d.correo) key = d.correo.toLowerCase().trim().split('@')[0];
+
+    if (!map.has(key)) {
+      const linked = Array.isArray(d.linked_ids) ? [...d.linked_ids] : [d.id];
+      if (!linked.includes(d.id)) linked.push(d.id);
+      map.set(key, { ...d, linked_ids: linked });
+    } else {
+      const exist = map.get(key);
+      if (!exist.linked_ids.includes(d.id)) exist.linked_ids.push(d.id);
+      if (Array.isArray(d.linked_ids)) {
+        d.linked_ids.forEach(id => { if (!exist.linked_ids.includes(id)) exist.linked_ids.push(id); });
+      }
+      if ((d.nombre || '').length > (exist.nombre || '').length) exist.nombre = d.nombre;
+      if (d.documento && !exist.documento) exist.documento = d.documento;
+      if (d.correo && !exist.correo) exist.correo = d.correo;
+      if (d.sede_nombre && !exist.sede_nombre) exist.sede_nombre = d.sede_nombre;
+      
+      const aSet = new Set((exist.areas || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean));
+      (d.areas || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(a => aSet.add(a));
+      exist.areas = Array.from(aSet).join(', ');
+
+      const gSet = new Set((exist.grados || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean));
+      (d.grados || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean).forEach(g => gSet.add(g));
+      exist.grados = Array.from(gSet).join(', ');
+    }
+  });
+
+  return Array.from(map.values());
+}
+
 async function loadDocentes() {
   try {
-    docentesData = await API.Docentes.getAll();
+    const raw = await API.Docentes.getAll();
+    docentesData = canonicalizeDocentesList(Array.isArray(raw) ? raw : []);
     renderDocentes(docentesData);
   } catch (err) {
     console.warn('Aviso: no se pudo sincronizar la lista secundaria de docentes', err);
@@ -229,7 +292,9 @@ async function openDocenteExpedienteModalFromDocentesPage(docenteId, docenteNomb
   try {
     showToast('⏳ Cargando planeaciones del docente...', 'info');
     const allPlans = await API.Planeaciones.getAll();
-    const plans = allPlans.filter(p => String(p.docente_id) === String(docenteId));
+    const doc = (docentesData || []).find(d => String(d.id) === String(docenteId) || (d.linked_ids && d.linked_ids.map(String).includes(String(docenteId))));
+    const targetIds = (doc && doc.linked_ids && doc.linked_ids.length > 0) ? doc.linked_ids.map(String) : [String(docenteId)];
+    const plans = allPlans.filter(p => targetIds.includes(String(p.docente_id)));
 
     if (!plans || plans.length === 0) {
       showToast(`ℹ️ El docente "${docenteNombre}" no registra planeaciones aún`, 'info');

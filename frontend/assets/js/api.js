@@ -76,7 +76,8 @@ async function apiFetch(endpoint, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(data.error || 'Ocurrió un error en la solicitud');
+      const detailMsg = Array.isArray(data.detalles) ? data.detalles.map(d => d.msg).join(', ') : '';
+      throw new Error(detailMsg || data.error || 'Ocurrió un error en la solicitud');
     }
 
     return data;
