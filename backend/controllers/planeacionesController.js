@@ -474,13 +474,12 @@ exports.create = async (req, res) => {
     const semana = parseInt(numero_semana) || activeW;
     const targetDate = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : parseDateSafe(getMondayOfISOWeek(semana, ahora.getFullYear()));
 
-    const dayOfWeek = ahora.getDay();
-    const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
-    const maxSemanaPermitida = isFridayOrWeekend ? (activeW + 1) : activeW;
+    // Permitir a los docentes preparar y subir planeaciones de la semana actual y hasta 2 semanas anticipadas
+    const maxSemanaPermitida = activeW + 2;
 
     if (req.user.rol === 'docente' && semana > maxSemanaPermitida) {
       return res.status(400).json({ 
-        error: `No está permitido registrar semanas futuras (Semana ${semana}). Las semanas siguientes únicamente se habilitan cada viernes.` 
+        error: `No está permitido registrar semanas con más de 2 semanas de anticipación (Máximo Semana ${maxSemanaPermitida}).` 
       });
     }
 
@@ -644,13 +643,12 @@ exports.update = async (req, res) => {
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
       const now = new Date();
       const currentW = getActiveAcademicWeek(now);
-      const dayOfWeek = now.getDay();
-      const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
-      const maxW = isFridayOrWeekend ? (currentW + 1) : currentW;
+      // Permitir preparación anticipada hasta 2 semanas en el futuro
+      const maxW = currentW + 2;
 
       if (targetW > maxW) {
         return res.status(400).json({
-          error: `Por motivos de seguridad, los docentes no pueden ingresar o cambiar planeaciones para semanas futuras (Máximo Semana ${maxW}). Las semanas siguientes se habilitan los viernes.`
+          error: `Por motivos de seguridad, los docentes no pueden registrar planeaciones con más de 2 semanas de anticipación (Máximo Semana ${maxW}).`
         });
       }
     }
@@ -1191,15 +1189,14 @@ exports.recibirDesdeRector = async (req, res) => {
     const anioTarget = targetDate.getFullYear();
     const cantClases = duracionClasesRaw ? parseInt(duracionClasesRaw) : 1;
 
-    const dayOfWeek = fechaSubidaFinal.getDay();
-    const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
-    const maxSemanaPermitida = isFridayOrWeekend ? (activeW + 1) : activeW;
+    // Permitir preparación pedagógica anticipada hasta 2 semanas futuras
+    const maxSemanaPermitida = activeW + 2;
 
     if (semana > maxSemanaPermitida) {
       return res.status(400).json({ 
         ok: false,
         success: false,
-        error: `No está permitido registrar semanas futuras (Semana ${semana}). Las semanas siguientes únicamente se habilitan cada viernes.` 
+        error: `No está permitido registrar semanas con más de 2 semanas de anticipación (Máximo Semana ${maxSemanaPermitida}).` 
       });
     }
 
@@ -1528,6 +1525,292 @@ exports.purgarStorage = async (req, res) => {
   } catch (err) {
     console.error('Error al purgar storage:', err);
     res.status(500).json({ error: 'Error al purgar almacenamiento: ' + err.message });
+  }
+};
+
+// ── GET /api/planeaciones/upload-url ──────────────────────────────────────
+// Genera Signed Upload URL para subir archivos directamente a Supabase Storage
+// Eliminando el cuello de botella y el límite de 4.5 MB de Vercel Serverless
+exports.getUploadUrl = async (req, res) => {
+  try {
+    const orig = (req.body && req.body.fileName) || 'planeacion.pdf';
+    const cleanOriginal = orig.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const safeName = `${Date.now()}_${cleanOriginal.toLowerCase().endsWith('.pdf') ? cleanOriginal : `${cleanOriginal}.pdf`}`;
+
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const exists = buckets && buckets.some(b => b.id === 'planeaciones_pdfs');
+      if (!exists) {
+        await supabase.storage.createBucket('planeaciones_pdfs', { public: true, fileSizeLimit: 52428800 });
+      }
+    } catch (e) {}
+
+    const { data, error } = await supabase.storage
+      .from('planeaciones_pdfs')
+      .createSignedUploadUrl(safeName);
+
+    const publicUrl = `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
+
+    if (error || !data) {
+      console.warn('Aviso en createSignedUploadUrl:', error ? error.message : 'sin datos');
+      return res.json({
+        signedUrl: null,
+        publicUrl: publicUrl,
+        safeName: safeName
+      });
+    }
+
+    res.json({
+      signedUrl: data.signedUrl,
+      token: data.token,
+      path: data.path || safeName,
+      publicUrl: publicUrl
+    });
+  } catch (err) {
+    console.error('Error al generar upload url:', err);
+    res.status(500).json({ error: 'Error al generar URL de subida: ' + err.message });
+  }
+};
+
+// ── GET /api/planeaciones/diagnostico-docentes ────────────────────────────
+// Centro de Diagnóstico Integral y Auditoría de Errores por Profesor
+exports.getDiagnosticoDocentes = async (req, res) => {
+  try {
+    const role = (req.user && req.user.rol ? req.user.rol : '').toLowerCase().trim();
+    const isAdmin = role === 'administrador' || role === 'admin' || role === 'coordinador';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Acceso denegado: solo el administrador institucional puede consultar este diagnóstico.' });
+    }
+
+    const ahora = new Date();
+    const currentW = getActiveAcademicWeek(ahora);
+    const targetSemana = parseInt(req.query.semana) || currentW;
+
+    // 1. Obtener nómina de docentes
+    const { data: docentes, error: errDoc } = await supabase
+      .from('docentes')
+      .select('*')
+      .order('nombre', { ascending: true });
+    if (errDoc) throw errDoc;
+
+    // 2. Obtener usuarios (para verificar si tienen cuenta y contraseña activa)
+    const { data: usuarios } = await supabase.from('usuarios').select('id, nombre, correo, docente_id, rol, activo');
+
+    // 3. Obtener semanas institucionales
+    const { data: semanasInst } = await supabase.from('semanas_institucionales').select('*').order('numero_semana', { ascending: true });
+
+    // 4. Obtener todas las planeaciones
+    const { data: planeaciones } = await supabase
+      .from('planeaciones')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    // 5. Estado de almacenamiento
+    const storageFilesCount = await getStorageFilesCount();
+
+    const userMapByDocId = new Map();
+    const userMapByEmail = new Map();
+    (usuarios || []).forEach(u => {
+      if (u.docente_id) userMapByDocId.set(String(u.docente_id), u);
+      if (u.correo) userMapByEmail.set(u.correo.toLowerCase().trim(), u);
+    });
+
+    const instWeekNums = (semanasInst || []).map(s => parseInt(s.numero_semana));
+    const isTargetInst = instWeekNums.includes(targetSemana);
+
+    const diagnosticos = (docentes || []).map(d => {
+      const dId = d.id;
+      const dMail = (d.correo || '').toLowerCase().trim();
+      const userObj = userMapByDocId.get(String(dId)) || userMapByEmail.get(dMail) || null;
+
+      // Unificar IDs vinculados para evitar falsos negativos por duplicados
+      const canonicalKey = getCanonicalDocKey(d.nombre, d.correo);
+      const related = (docentes || []).filter(item => getCanonicalDocKey(item.nombre, item.correo) === canonicalKey);
+      const linkedIds = related.map(item => String(item.id));
+
+      const docPlanes = (planeaciones || []).filter(p => linkedIds.includes(String(p.docente_id)));
+      const planSemana = docPlanes.find(p => parseInt(p.numero_semana) === targetSemana);
+
+      const hasAreas = Boolean(d.areas && d.areas.trim().length > 0);
+      const hasGrados = Boolean(d.grados && d.grados.trim().length > 0);
+      const isActive = d.estado === 'activo' || d.activo === true || d.activo === 1;
+
+      let estadoSemana = 'sin_entrega';
+      let planeacionDetalle = null;
+
+      if (isTargetInst) {
+        estadoSemana = planSemana && planSemana.estado !== 'no_entrego' ? 'subio_opcional' : 'semana_institucional';
+        if (planSemana) planeacionDetalle = planSemana;
+      } else if (planSemana) {
+        if (planSemana.estado === 'no_entrego') {
+          estadoSemana = 'no_entrego_cron';
+        } else {
+          estadoSemana = planSemana.estado || 'a_tiempo';
+        }
+        planeacionDetalle = planSemana;
+      }
+
+      const problemas = [];
+      let severidad = 'ok'; // 'ok' | 'advertencia' | 'critico'
+      let causaExacta = 'Sin problemas. El docente se encuentra al día.';
+
+      if (!isActive) {
+        problemas.push('Cuenta docente inactiva en base de datos.');
+        severidad = 'critico';
+        causaExacta = 'La cuenta del docente está inactiva. El sistema rechaza cualquier intento de subida con error 403.';
+      }
+
+      if (!userObj) {
+        problemas.push('Sin credenciales en tabla usuarios.');
+        if (severidad !== 'critico') severidad = 'advertencia';
+        causaExacta = 'El docente no tiene usuario registrado para iniciar sesión en la plataforma.';
+      }
+
+      if (!hasAreas || !hasGrados) {
+        problemas.push('Sin áreas o grados asignados.');
+        if (severidad !== 'critico') severidad = 'advertencia';
+        causaExacta = 'El docente no tiene asignaturas o grados configurados en su perfil académico.';
+      }
+
+      if (estadoSemana === 'no_entrego_cron') {
+        problemas.push(`Marcado por Cron Job automático como 'No Entregó' (Semana ${targetSemana}).`);
+        if (severidad !== 'critico') severidad = 'advertencia';
+        causaExacta = `El proceso de verificación automática de los martes a las 00:05 lo registró como 'No Entregó' por no haber subido antes del plazo.`;
+      } else if (estadoSemana === 'sin_entrega' && !isTargetInst) {
+        problemas.push(`Falta entrega para la Semana ${targetSemana}.`);
+        if (severidad !== 'critico') severidad = 'advertencia';
+        causaExacta = `No registra planeación para la Semana ${targetSemana}. Si intentó subir un archivo pesado (>4.5 MB), Vercel lo rechazó silenciosamente.`;
+      }
+
+      // Semanas faltantes
+      const missingWeeks = [];
+      for (let w = 32; w <= currentW; w++) {
+        if (instWeekNums.includes(w)) continue;
+        const entrega = docPlanes.find(p => parseInt(p.numero_semana) === w && p.estado !== 'no_entrego');
+        if (!entrega) missingWeeks.push(w);
+      }
+
+      return {
+        id: d.id,
+        nombre: d.nombre,
+        correo: d.correo,
+        documento: d.documento || '--',
+        sede_id: d.sede_id,
+        sede_nombre: SEDES_MAP[d.sede_id] || d.sede_nombre || 'I.E. Guaimaral',
+        jornada_id: d.jornada_id,
+        jornada_nombre: JORNADAS_MAP[d.jornada_id] || d.jornada_nombre || 'Mañana',
+        areas: d.areas || '',
+        grados: d.grados || '',
+        activo: isActive,
+        tiene_usuario: Boolean(userObj),
+        estado_semana: estadoSemana,
+        planeacion_actual: planeacionDetalle,
+        total_planeaciones: docPlanes.filter(p => p.estado !== 'no_entrego').length,
+        missing_weeks: missingWeeks,
+        problemas: problemas,
+        severidad: severidad,
+        causa_exacta: causaExacta
+      };
+    });
+
+    // Últimas 30 planeaciones registradas en BD (auditoría / logs)
+    const ultimosLogs = (planeaciones || []).slice(0, 30).map(p => {
+      const doc = (docentes || []).find(d => String(d.id) === String(p.docente_id));
+      return {
+        id: p.id,
+        docente_nombre: doc ? doc.nombre : `Docente ID ${p.docente_id}`,
+        area: p.area,
+        grado: p.grado,
+        semana: p.numero_semana,
+        fecha_subida: p.fecha_subida || p.created_at,
+        fecha_aplicacion: p.fecha_aplicacion,
+        estado: p.estado,
+        nombre_archivo: p.nombre_archivo,
+        es_rector_ia: Boolean(p.observaciones && p.observaciones.includes('[REVISION_IA_JSON]:'))
+      };
+    });
+
+    res.json({
+      semana_consultada: targetSemana,
+      semana_actual: currentW,
+      es_institucional: isTargetInst,
+      storage: {
+        archivos_en_storage: storageFilesCount,
+        limite_maximo: 700,
+        porcentaje_usado: Math.round((storageFilesCount / 700) * 100)
+      },
+      totales: {
+        docentes_activos: docentes.length,
+        al_dia: diagnosticos.filter(d => d.severidad === 'ok' || d.estado_semana === 'a_tiempo' || d.estado_semana === 'entregado').length,
+        con_problemas: diagnosticos.filter(d => d.severidad !== 'ok').length,
+        sin_entrega: diagnosticos.filter(d => d.estado_semana === 'sin_entrega' || d.estado_semana === 'no_entrego_cron').length
+      },
+      semanas_institucionales: semanasInst || [],
+      docentes: diagnosticos,
+      ultimos_logs: ultimosLogs
+    });
+  } catch (err) {
+    console.error('Error en getDiagnosticoDocentes:', err);
+    res.status(500).json({ error: 'Error en diagnóstico: ' + err.message });
+  }
+};
+
+// ── POST /api/planeaciones/reparar-semana ─────────────────────────────────
+// Permite al Administrador justificar o limpiar marcas de error para un docente
+exports.repararDocenteSemana = async (req, res) => {
+  try {
+    const role = (req.user && req.user.rol ? req.user.rol : '').toLowerCase().trim();
+    const isAdmin = role === 'administrador' || role === 'admin' || role === 'coordinador';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Solo el administrador puede reparar semanas de docentes.' });
+    }
+
+    const { docente_id, semana, accion, motivo } = req.body || {};
+    if (!docente_id || !semana) {
+      return res.status(400).json({ error: 'docente_id y semana son requeridos' });
+    }
+
+    const did = parseInt(docente_id);
+    const sem = parseInt(semana);
+
+    if (accion === 'justificar') {
+      await supabase
+        .from('planeaciones')
+        .delete()
+        .eq('docente_id', did)
+        .eq('numero_semana', sem)
+        .eq('estado', 'no_entrego');
+
+      const fechaStr = new Date().toISOString().split('T')[0];
+      await insertPlaneacionSegura({
+        docente_id: did,
+        area: 'Justificada por Administración',
+        grado: 'Institucional',
+        fecha_aplicacion: fechaStr,
+        numero_semana: sem,
+        nombre_archivo: `justificada_sem${sem}.pdf`,
+        observaciones: motivo || 'Entrega justificada y exonerada por Coordinación / Administración.',
+        estado: 'a_tiempo'
+      });
+
+      return res.json({ success: true, message: `Semana ${sem} justificada correctamente para el docente.` });
+    }
+
+    if (accion === 'limpiar_no_entrego') {
+      await supabase
+        .from('planeaciones')
+        .delete()
+        .eq('docente_id', did)
+        .eq('numero_semana', sem)
+        .eq('estado', 'no_entrego');
+
+      return res.json({ success: true, message: `Registro de 'no_entrego' eliminado exitosamente para la semana ${sem}.` });
+    }
+
+    res.status(400).json({ error: 'Acción no válida' });
+  } catch (err) {
+    console.error('Error al reparar semana:', err);
+    res.status(500).json({ error: err.message || 'Error al reparar semana' });
   }
 };
 

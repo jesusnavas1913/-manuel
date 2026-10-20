@@ -137,6 +137,9 @@ async function initPlaneacionesPage() {
       currentAdminDocenteFilter = filterParam;
       setAdminDocenteFilter(filterParam);
     }
+    if (urlParams.get('diagnostico') === 'true') {
+      setTimeout(() => openDiagnosticoModal(), 350);
+    }
 
     try {
       await loadAdminDocentes();
@@ -168,13 +171,51 @@ const SUPABASE_STORAGE_BUCKET_URL = 'https://fawxjdiwtamkctrhtqzc.supabase.co/st
 const SUPABASE_STORAGE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhd3hqZGl3dGFta2N0cmh0cXpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjg3ODIsImV4cCI6MjEwNzY0NDc4Mn0.JlNRraj9g_JJQ6yRxtL20edTKVKylnxN-UBBJ7h0TrU';
 
 async function uploadPdfDirectToStorage(file) {
-  if (file && file.size > 20 * 1024 * 1024) {
-    throw new Error('El archivo PDF es demasiado pesado (máximo 20 MB). Por favor use un archivo PDF más liviano para no saturar el almacenamiento.');
+  if (file && file.size > 50 * 1024 * 1024) {
+    throw new Error('El archivo PDF supera el tamaño máximo permitido de 50 MB.');
   }
   const rawClean = (file.name || 'planeacion.pdf').replace(/[^a-zA-Z0-9.\-_]/g, '_');
   const safeName = `${Date.now()}_${rawClean.toLowerCase().endsWith('.pdf') ? rawClean : `${rawClean}.pdf`}`;
-  const uploadUrl = `${SUPABASE_STORAGE_BUCKET_URL}/${safeName}`;
 
+  // 1. Método 1 (Recomendado): Signed Upload URL pre-autorizada por backend
+  // Inmune al límite de 4.5 MB de Vercel y sin bloqueos de políticas RLS en Supabase
+  try {
+    const token = Storage.getToken();
+    const endpointUrl = (typeof API_BASE !== 'undefined' ? API_BASE : '/api');
+    const signRes = await fetch(`${endpointUrl}/planeaciones/upload-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ fileName: file.name || 'planeacion.pdf' })
+    });
+
+    if (signRes.ok) {
+      const signData = await signRes.json();
+      if (signData && signData.signedUrl) {
+        const uploadRes = await fetch(signData.signedUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/pdf'
+          },
+          body: file
+        });
+
+        if (uploadRes.ok) {
+          console.log('✅ Archivo PDF subido exitosamente vía Signed URL:', signData.publicUrl);
+          return signData.publicUrl;
+        } else {
+          console.warn('Subida PUT Signed URL devolvió status:', uploadRes.status);
+        }
+      }
+    }
+  } catch (signErr) {
+    console.warn('Nota Signed Upload URL, procediendo con fallback:', signErr);
+  }
+
+  // 2. Método 2 (Fallback directo a Supabase con clave anónima)
+  const uploadUrl = `${SUPABASE_STORAGE_BUCKET_URL}/${safeName}`;
   const res = await fetch(uploadUrl, {
     method: 'POST',
     headers: {
@@ -186,12 +227,12 @@ async function uploadPdfDirectToStorage(file) {
     body: file
   });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.message || 'Error al subir el archivo PDF a almacenamiento');
+  if (res.ok) {
+    return `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
   }
 
-  return `https://fawxjdiwtamkctrhtqzc.supabase.co/storage/v1/object/public/planeaciones_pdfs/${safeName}`;
+  const errData = await res.json().catch(() => ({}));
+  throw new Error(errData.message || 'Error al subir el archivo PDF a almacenamiento');
 }
 
 function parseLocalDate(str) {
@@ -263,15 +304,14 @@ function populateDocenteWeekSelect() {
   const defaultW = currentW;
 
   let optionsHtml = '';
-  // Permitir semanas futuras (planeación anticipada institucional)
-  const isFridayOrWeekend = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0);
-  const maxW = isFridayOrWeekend ? (currentW + 1) : currentW;
+  // Permitir semanas futuras (hasta 2 semanas de preparación pedagógica anticipada)
+  const maxW = currentW + 2;
   for (let w = maxW; w >= EVALUACION_INICIO_SEMANA; w--) {
     const isCur = w === currentW;
     const isFuture = w > currentW;
     let label = `Semana ${w}`;
     if (isFuture) {
-      label = `Semana ${w} (Planeación Anticipada / Próxima Semana)`;
+      label = `Semana ${w} (Planeación Anticipada / Habilitada)`;
     } else if (isCur) {
       if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
         label = `Semana ${w} (Semana Activa - Abierta desde Viernes)`;
@@ -1671,6 +1711,9 @@ async function savePlaneacion(e) {
       });
     } else {
       // Fallback por FormData
+      if (file && file.size > 4.2 * 1024 * 1024) {
+        throw new Error('El archivo PDF pesa ' + (file.size / (1024 * 1024)).toFixed(1) + ' MB y superó el límite de transferencia. Por favor use un PDF comprimido a menos de 4 MB.');
+      }
       const payload = new FormData();
       payload.append('docente_id', did);
       payload.append('area', areaVal);
@@ -2756,4 +2799,565 @@ function printSecuenciaContent() {
 </body>
 </html>`);
   printWin.document.close();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔍 CENTRO MAESTRO DE DIAGNÓSTICO, ERRORES Y SOLUCIÓN DE DOCENTES (ADMIN)
+// ══════════════════════════════════════════════════════════════════════════════
+
+let diagnosticoGlobalData = null;
+let currentDiagnosticoFilter = 'all'; // 'all', 'issues', 'ok'
+let currentDiagnosticoTab = 'docentes'; // 'docentes', 'logs', 'storage'
+
+async function openDiagnosticoModal(selectedWeek = null) {
+  const user = Storage.getUser();
+  const role = (user && user.rol ? user.rol : '').toLowerCase().trim();
+  const isAdmin = !user?.docente_id && (role === 'administrador' || role === 'admin' || role === 'coordinador');
+  if (!isAdmin) {
+    showToast('⚠️ Acceso exclusivo para el administrador o coordinador.', 'error');
+    return;
+  }
+
+  const existing = document.getElementById('adminDiagnosticoModal');
+  if (existing) existing.remove();
+
+  const targetW = selectedWeek || selectedAdminWeek || getActiveAcademicWeek();
+
+  const modal = document.createElement('div');
+  modal.id = 'adminDiagnosticoModal';
+  modal.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.85); backdrop-filter:blur(8px); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; animation:fadeIn 0.2s ease;';
+
+  modal.innerHTML = `
+    <div style="background:var(--surface, #1e293b); color:var(--text-main, #f1f5f9); border-radius:18px; max-width:1250px; width:98%; height:94vh; display:flex; flex-direction:column; box-shadow:0 30px 80px rgba(0,0,0,0.7); border:1.5px solid var(--border, #334155); overflow:hidden;">
+      
+      <!-- Topbar Header -->
+      <div style="background:var(--bg, #0f172a); padding:16px 24px; border-bottom:1.5px solid var(--border, #334155); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg, #f59e0b, #d97706); display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff; box-shadow:0 4px 12px rgba(245,158,11,0.3);">
+            🔍
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:17.5px; font-weight:800; color:#f59e0b; display:flex; align-items:center; gap:8px;">
+              Centro de Diagnóstico, Errores y Solución por Docente
+              <span style="font-size:11px; padding:2px 8px; background:rgba(245,158,11,0.2); border:1px solid #f59e0b; border-radius:10px; color:#f59e0b; font-weight:700;">ADMIN PRO</span>
+            </h3>
+            <small style="color:var(--text-muted, #94a3b8); font-size:12px;">
+              Auditoría en tiempo real de por qué fallan subidas, estado de la base de datos y herramientas de solución inmediata.
+            </small>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:6px; background:var(--surface); padding:4px 10px; border-radius:10px; border:1px solid var(--border);">
+            <label style="font-size:12px; font-weight:700; color:var(--text-muted);">Auditar Semana:</label>
+            <select id="selDiagnosticoWeek" onchange="openDiagnosticoModal(this.value)" style="background:transparent; border:none; color:var(--text-main); font-weight:800; font-size:13px; cursor:pointer; outline:none;"></select>
+          </div>
+          <button type="button" onclick="loadDiagnosticoData(${targetW})" class="btn btn-light btn-sm" style="padding:6px 12px; font-size:12px; border-radius:8px; font-weight:700; display:inline-flex; align-items:center; gap:4px;" title="Recargar datos">
+            🔄 Refrescar
+          </button>
+          <button type="button" onclick="document.getElementById('adminDiagnosticoModal').remove()" style="background:none; border:none; font-size:28px; cursor:pointer; color:var(--text-muted); line-height:1; padding:0 6px;" title="Cerrar">&times;</button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(0,0,0,0.15); padding:10px 24px; border-bottom:1px solid var(--border); flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="tabDiagDocentesBtn" onclick="switchDiagnosticoTab('docentes')" class="btn btn-sm btn-primary" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:8px;">
+            👨‍🏫 Diagnóstico de Docentes (<span id="diagDocentesCount">0</span>)
+          </button>
+          <button type="button" id="tabDiagLogsBtn" onclick="switchDiagnosticoTab('logs')" class="btn btn-sm btn-light" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:8px;">
+            📜 Logs de la Base de Datos (Últimas Subidas)
+          </button>
+          <button type="button" id="tabDiagStorageBtn" onclick="switchDiagnosticoTab('storage')" class="btn btn-sm btn-light" style="padding:6px 14px; font-size:12px; font-weight:700; border-radius:8px;">
+            📦 Almacenamiento & Semanas Institucionales
+          </button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" onclick="copyDiagnosticoSummary()" class="btn btn-light btn-sm" style="padding:6px 12px; font-size:11.5px; border-radius:8px; font-weight:700; background:rgba(56,189,248,0.15); color:var(--primary-accent); border:1px solid rgba(56,189,248,0.3);">
+            📋 Copiar Informe de Diagnóstico
+          </button>
+        </div>
+      </div>
+
+      <!-- Body Content (Scrollable) -->
+      <div id="diagnosticoModalBody" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:16px;">
+        <div style="text-align:center; padding:50px; color:var(--text-muted);">
+          <span style="font-size:32px; display:block; margin-bottom:8px; animation:spin 1s infinite linear;">⏳</span>
+          Analizando base de datos, nómina docente, registros y cuotas de almacenamiento...
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Poblar selector de semanas
+  const selWeek = document.getElementById('selDiagnosticoWeek');
+  if (selWeek) {
+    const curW = getActiveAcademicWeek();
+    let opt = '';
+    for (let w = curW + 2; w >= EVALUACION_INICIO_SEMANA; w--) {
+      const isCur = (w === curW);
+      opt += `<option value="${w}" ${w === targetW ? 'selected' : ''}>Semana ${w} ${isCur ? '• ACTUAL' : ''}</option>`;
+    }
+    selWeek.innerHTML = opt;
+  }
+
+  await loadDiagnosticoData(targetW);
+}
+
+async function loadDiagnosticoData(targetWeek) {
+  const container = document.getElementById('diagnosticoModalBody');
+  if (!container) return;
+
+  try {
+    const data = await API.Planeaciones.getDiagnostico(targetWeek);
+    diagnosticoGlobalData = data;
+
+    const countBadge = document.getElementById('diagDocentesCount');
+    if (countBadge) countBadge.innerText = (data.docentes || []).length;
+
+    renderCurrentDiagnosticoView();
+  } catch (err) {
+    console.error('Error cargando diagnóstico:', err);
+    container.innerHTML = `
+      <div style="background:rgba(239,68,68,0.15); border:1.5px solid #ef4444; border-radius:12px; padding:24px; text-align:center; color:#ef4444;">
+        <h4 style="margin:0 0 8px; font-size:16px;">💥 Error al cargar diagnóstico de docentes</h4>
+        <p style="margin:0; font-size:13px; color:var(--text-main);">${err.message || 'No se pudo conectar con el endpoint de diagnóstico'}</p>
+        <button type="button" onclick="loadDiagnosticoData(${targetWeek})" class="btn btn-danger btn-sm" style="margin-top:14px; font-weight:700;">Reintentar</button>
+      </div>
+    `;
+  }
+}
+
+function switchDiagnosticoTab(tab) {
+  currentDiagnosticoTab = tab;
+
+  const btnDoc = document.getElementById('tabDiagDocentesBtn');
+  const btnLogs = document.getElementById('tabDiagLogsBtn');
+  const btnSto = document.getElementById('tabDiagStorageBtn');
+
+  if (btnDoc) {
+    btnDoc.className = tab === 'docentes' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+  }
+  if (btnLogs) {
+    btnLogs.className = tab === 'logs' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+  }
+  if (btnSto) {
+    btnSto.className = tab === 'storage' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-light';
+  }
+
+  renderCurrentDiagnosticoView();
+}
+
+function renderCurrentDiagnosticoView() {
+  const container = document.getElementById('diagnosticoModalBody');
+  if (!container || !diagnosticoGlobalData) return;
+
+  if (currentDiagnosticoTab === 'docentes') {
+    renderDiagnosticoDocentesTab(container, diagnosticoGlobalData);
+  } else if (currentDiagnosticoTab === 'logs') {
+    renderDiagnosticoLogsTab(container, diagnosticoGlobalData);
+  } else if (currentDiagnosticoTab === 'storage') {
+    renderDiagnosticoStorageTab(container, diagnosticoGlobalData);
+  }
+}
+
+// ── PESTAÑA 1: DIAGNÓSTICO POR DOCENTE ────────────────────────────────────
+function renderDiagnosticoDocentesTab(container, data) {
+  const t = data.totales || {};
+  const s = data.storage || {};
+  const isInst = data.es_institucional;
+  const docs = data.docentes || [];
+
+  // Filtrado según búsqueda y estado
+  const searchInput = document.getElementById('searchDiagDocente');
+  const query = searchInput ? (searchInput.value || '').toLowerCase().trim() : '';
+
+  const filteredDocs = docs.filter(d => {
+    // Filtro texto
+    if (query) {
+      const matchText = (d.nombre || '').toLowerCase().includes(query) ||
+                        (d.correo || '').toLowerCase().includes(query) ||
+                        (d.sede_nombre || '').toLowerCase().includes(query);
+      if (!matchText) return false;
+    }
+    // Filtro categoría
+    if (currentDiagnosticoFilter === 'issues') {
+      return d.severidad !== 'ok' || d.estado_semana === 'sin_entrega' || d.estado_semana === 'no_entrego_cron';
+    }
+    if (currentDiagnosticoFilter === 'ok') {
+      return d.severidad === 'ok' && (d.estado_semana === 'a_tiempo' || d.estado_semana === 'entregado' || d.estado_semana === 'subio_opcional');
+    }
+    return true;
+  });
+
+  container.innerHTML = `
+    <!-- KPI Summary Grid -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+      
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 16px;">
+        <small style="color:var(--text-muted); font-size:11.5px; font-weight:700;">👨‍🏫 Total Docentes Activos</small>
+        <div style="font-size:22px; font-weight:800; color:var(--text-main); margin-top:2px;">${t.docentes_activos || 0}</div>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 16px;">
+        <small style="color:#10b981; font-size:11.5px; font-weight:700;">🟢 Entregaron / Al Día (Sem ${data.semana_consultada})</small>
+        <div style="font-size:22px; font-weight:800; color:#10b981; margin-top:2px;">
+          ${t.al_dia || 0} <span style="font-size:13px; font-weight:600; color:var(--text-muted);">(${Math.round(((t.al_dia || 0)/(t.docentes_activos || 1))*100)}%)</span>
+        </div>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid rgba(239,68,68,0.3); border-radius:12px; padding:12px 16px;">
+        <small style="color:#ef4444; font-size:11.5px; font-weight:700;">🔴 Con Fallos o Sin Entrega (Sem ${data.semana_consultada})</small>
+        <div style="font-size:22px; font-weight:800; color:#ef4444; margin-top:2px;">
+          ${t.sin_entrega || 0} <span style="font-size:13px; font-weight:600; color:var(--text-muted);">(${Math.round(((t.sin_entrega || 0)/(t.docentes_activos || 1))*100)}%)</span>
+        </div>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <small style="color:var(--primary-accent); font-size:11.5px; font-weight:700;">📦 Almacenamiento Supabase</small>
+          <span style="font-size:11px; font-weight:800; color:${s.porcentaje_usado > 85 ? '#ef4444' : '#10b981'};">${s.archivos_en_storage || 0} / 700 PDFs</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.08); height:8px; border-radius:4px; margin-top:8px; overflow:hidden;">
+          <div style="background:${s.porcentaje_usado > 85 ? '#ef4444' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; width:${Math.min(s.porcentaje_usado || 0, 100)}%; height:100%;"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Alert si es institucional -->
+    ${isInst ? `
+      <div style="background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.35); border-radius:10px; padding:10px 16px; font-size:12.5px; color:#38bdf8; display:flex; align-items:center; gap:8px;">
+        <span>ℹ️</span>
+        <div><strong>Semana Institucional / Receso Oficial:</strong> En la Semana ${data.semana_consultada} no es obligatoria la entrega de planeaciones didácticas.</div>
+      </div>
+    ` : ''}
+
+    <!-- Controles de Filtro y Búsqueda -->
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:var(--bg); padding:10px 14px; border-radius:12px; border:1px solid var(--border);">
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button type="button" onclick="setDiagnosticoFilter('all')" class="btn btn-sm ${currentDiagnosticoFilter === 'all' ? 'btn-primary' : 'btn-light'}" style="font-size:11.5px; font-weight:700; border-radius:6px;">
+          Todos (${docs.length})
+        </button>
+        <button type="button" onclick="setDiagnosticoFilter('issues')" class="btn btn-sm ${currentDiagnosticoFilter === 'issues' ? 'btn-danger' : 'btn-light'}" style="font-size:11.5px; font-weight:700; border-radius:6px; color:#ef4444;">
+          🔴 Con Errores / Faltantes (${docs.filter(d => d.severidad !== 'ok' || d.estado_semana === 'sin_entrega' || d.estado_semana === 'no_entrego_cron').length})
+        </button>
+        <button type="button" onclick="setDiagnosticoFilter('ok')" class="btn btn-sm ${currentDiagnosticoFilter === 'ok' ? 'btn-success' : 'btn-light'}" style="font-size:11.5px; font-weight:700; border-radius:6px; color:#10b981;">
+          🟢 Al Día (${docs.filter(d => d.severidad === 'ok' && (d.estado_semana === 'a_tiempo' || d.estado_semana === 'entregado')).length})
+        </button>
+      </div>
+
+      <div style="flex:1; max-width:320px;">
+        <input type="text" id="searchDiagDocente" placeholder="🔍 Buscar por docente o correo..." oninput="renderCurrentDiagnosticoView()" value="${query}" style="width:100%; padding:6px 12px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text-main); outline:none;">
+      </div>
+    </div>
+
+    <!-- Tabla Detallada de Diagnóstico -->
+    <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg);">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="background:rgba(0,0,0,0.25); border-bottom:1.5px solid var(--border); text-align:left;">
+            <th style="padding:10px 14px; font-weight:700; color:var(--text-muted);">Docente / Contacto</th>
+            <th style="padding:10px 14px; font-weight:700; color:var(--text-muted);">Estado Sem ${data.semana_consultada}</th>
+            <th style="padding:10px 14px; font-weight:700; color:var(--text-muted);">Diagnóstico del Error / Causa</th>
+            <th style="padding:10px 14px; font-weight:700; color:var(--text-muted); text-align:center;">Acciones de Solución</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredDocs.length === 0 ? `
+            <tr>
+              <td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted);">
+                No se encontraron docentes con los filtros aplicados.
+              </td>
+            </tr>
+          ` : filteredDocs.map(d => {
+            let badgeHtml = '';
+            if (d.estado_semana === 'a_tiempo' || d.estado_semana === 'entregado') {
+              badgeHtml = `<span style="background:rgba(16,185,129,0.18); color:#10b981; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11px; display:inline-block;">🟢 Entregó A Tiempo</span>`;
+            } else if (d.estado_semana === 'con_retraso') {
+              badgeHtml = `<span style="background:rgba(245,158,11,0.18); color:#f59e0b; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11px; display:inline-block;">🟡 Con Retraso</span>`;
+            } else if (d.estado_semana === 'no_entrego_cron') {
+              badgeHtml = `<span style="background:rgba(239,68,68,0.18); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:3px 10px; border-radius:12px; font-weight:700; font-size:11px; display:inline-block;">🔴 Marcado No Entregó (Cron)</span>`;
+            } else if (d.estado_semana === 'semana_institucional') {
+              badgeHtml = `<span style="background:rgba(148,163,184,0.18); color:#94a3b8; padding:3px 10px; border-radius:12px; font-weight:600; font-size:11px; display:inline-block;">⚪ Semana Receso</span>`;
+            } else if (d.estado_semana === 'subio_opcional') {
+              badgeHtml = `<span style="background:rgba(56,189,248,0.18); color:#38bdf8; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11px; display:inline-block;">🔵 Subió Opcional</span>`;
+            } else {
+              badgeHtml = `<span style="background:rgba(239,68,68,0.18); color:#ef4444; padding:3px 10px; border-radius:12px; font-weight:700; font-size:11px; display:inline-block;">🔴 Sin Entrega</span>`;
+            }
+
+            const isOk = (d.severidad === 'ok');
+
+            return `
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.06); background:${isOk ? 'transparent' : 'rgba(239,68,68,0.03)'};">
+                <td style="padding:10px 14px; vertical-align:middle;">
+                  <strong style="color:var(--text-main); font-size:12.5px;">${d.nombre}</strong><br>
+                  <small style="color:var(--text-muted); font-size:11px;">📧 ${d.correo || 'Sin correo'} • ${d.sede_nombre}</small>
+                </td>
+                <td style="padding:10px 14px; vertical-align:middle;">
+                  ${badgeHtml}
+                  ${d.missing_weeks && d.missing_weeks.length > 0 ? `
+                    <div style="margin-top:3px; font-size:10.5px; color:#f59e0b; font-weight:600;">
+                      Debe anteriores: ${d.missing_weeks.map(w => `Sem ${w}`).join(', ')}
+                    </div>
+                  ` : ''}
+                </td>
+                <td style="padding:10px 14px; vertical-align:middle;">
+                  <div style="color:${isOk ? '#10b981' : '#f87171'}; font-weight:600; font-size:11.5px;">
+                    ${d.causa_exacta}
+                  </div>
+                  ${d.planeacion_actual ? `
+                    <small style="color:var(--text-muted); font-size:10.5px; display:block; margin-top:2px;">
+                      📄 Archivo: ${d.planeacion_actual.nombre_archivo ? d.planeacion_actual.nombre_archivo.split('/').pop() : 'Registrado'}
+                    </small>
+                  ` : ''}
+                </td>
+                <td style="padding:10px 14px; vertical-align:middle; text-align:center;">
+                  <div style="display:inline-flex; gap:4px; flex-wrap:wrap; justify-content:center;">
+                    <!-- Botón subir por docente -->
+                    <button type="button" onclick="openAdminUploadModal('${d.id}')" class="btn btn-success btn-sm" style="padding:4px 8px; font-size:11px; font-weight:700; border-radius:6px; background:#10b981; border:none;" title="Subir planeación didáctica por este docente">
+                      📤 Subir
+                    </button>
+
+                    <!-- Botón Justificar -->
+                    <button type="button" onclick="repararDocenteSemanaAction(${d.id}, ${data.semana_consultada}, 'justificar', '${(d.nombre || '').replace(/['"]/g, '')}')" class="btn btn-light btn-sm" style="padding:4px 8px; font-size:11px; font-weight:700; border-radius:6px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3);" title="Justificar / Exonerar esta semana para este docente">
+                      🔓 Justificar
+                    </button>
+
+                    <!-- Limpiar no_entrego si aplica -->
+                    ${d.estado_semana === 'no_entrego_cron' ? `
+                      <button type="button" onclick="repararDocenteSemanaAction(${d.id}, ${data.semana_consultada}, 'limpiar_no_entrego', '${(d.nombre || '').replace(/['"]/g, '')}')" class="btn btn-danger btn-sm" style="padding:4px 8px; font-size:11px; font-weight:700; border-radius:6px; background:#dc2626;" title="Eliminar registro de 'No Entregó' generado por cron">
+                        🧹 Limpiar Falta
+                      </button>
+                    ` : ''}
+
+                    <!-- Notificar WhatsApp con Guía -->
+                    <button type="button" onclick="notifyDocenteReminder('${d.id}')" class="btn btn-light btn-sm" style="padding:4px 8px; font-size:11px; font-weight:700; border-radius:6px;" title="Enviar recordatorio con instrucciones">
+                      💬 Recordar
+                    </button>
+
+                    <!-- Ver Historial -->
+                    <button type="button" onclick="openDocenteExpedienteModal('${d.id}')" class="btn btn-primary btn-sm" style="padding:4px 8px; font-size:11px; font-weight:700; border-radius:6px; background:#0284c7;" title="Ver expediente completo">
+                      📁 Historial
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ── PESTAÑA 2: LOGS EN TIEMPO REAL DE LA BASE DE DATOS ─────────────────────
+function renderDiagnosticoLogsTab(container, data) {
+  const logs = data.ultimos_logs || [];
+
+  container.innerHTML = `
+    <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h4 style="margin:0; font-size:15px; font-weight:800; color:var(--primary-accent);">
+            📜 Registro de Auditoría de Base de Datos (Últimas 30 Planeaciones en Supabase)
+          </h4>
+          <small style="color:var(--text-muted); font-size:11.5px;">
+            Verificación en vivo de registros insertados o modificados, con enlace directo al documento en la nube.
+          </small>
+        </div>
+        <button type="button" onclick="loadDiagnosticoData(${data.semana_consultada})" class="btn btn-light btn-sm" style="padding:4px 10px; font-size:11.5px;">
+          🔄 Actualizar Logs
+        </button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+          <thead>
+            <tr style="background:rgba(0,0,0,0.25); border-bottom:1.5px solid var(--border); text-align:left;">
+              <th style="padding:8px 10px; color:var(--text-muted);">ID</th>
+              <th style="padding:8px 10px; color:var(--text-muted);">Docente</th>
+              <th style="padding:8px 10px; color:var(--text-muted);">Área & Grado</th>
+              <th style="padding:8px 10px; color:var(--text-muted);">Semana</th>
+              <th style="padding:8px 10px; color:var(--text-muted);">Fecha Registro</th>
+              <th style="padding:8px 10px; color:var(--text-muted);">Estado</th>
+              <th style="padding:8px 10px; color:var(--text-muted); text-align:center;">Archivo PDF</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.length === 0 ? `
+              <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">No hay registros en la base de datos.</td></tr>
+            ` : logs.map(l => {
+              const fileClean = l.nombre_archivo ? l.nombre_archivo.split('/').pop() : 'Sin archivo';
+              const fileUrl = l.nombre_archivo ? (l.nombre_archivo.startsWith('http') ? l.nombre_archivo : `${SUPABASE_STORAGE_BUCKET_URL}/${l.nombre_archivo}`) : null;
+              
+              return `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                  <td style="padding:8px 10px; font-weight:700; color:var(--text-muted);">#${l.id}</td>
+                  <td style="padding:8px 10px; font-weight:700; color:var(--text-main);">${l.docente_nombre}</td>
+                  <td style="padding:8px 10px;">${l.area} • <strong>${l.grado}</strong></td>
+                  <td style="padding:8px 10px;"><span style="background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 6px; border-radius:6px; font-weight:700;">Sem ${l.semana}</span></td>
+                  <td style="padding:8px 10px; color:var(--text-muted);">${fmtDateTime(l.fecha_subida)}</td>
+                  <td style="padding:8px 10px;">
+                    <span style="font-size:10.5px; font-weight:700; color:${l.estado === 'a_tiempo' ? '#10b981' : (l.estado === 'no_entrego' ? '#ef4444' : '#f59e0b')};">
+                      ${l.estado}
+                    </span>
+                    ${l.es_rector_ia ? `<span style="font-size:9.5px; padding:1px 5px; background:linear-gradient(135deg, #6366f1, #a855f7); color:#fff; border-radius:8px; margin-left:4px;">Rector IA</span>` : ''}
+                  </td>
+                  <td style="padding:8px 10px; text-align:center;">
+                    ${fileUrl ? `
+                      <a href="${fileUrl}" target="_blank" class="btn btn-light btn-sm" style="padding:3px 8px; font-size:10.5px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+                        🔗 Ver PDF
+                      </a>
+                    ` : '<span style="color:var(--text-muted); font-size:10.5px;">--</span>'}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ── PESTAÑA 3: ALMACENAMIENTO Y SEMANAS INSTITUCIONALES ─────────────────────
+function renderDiagnosticoStorageTab(container, data) {
+  const s = data.storage || {};
+  const instW = data.semanas_institucionales || [];
+
+  container.innerHTML = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+      
+      <!-- Card Almacenamiento Supabase -->
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:18px;">
+        <h4 style="margin:0 0 10px; font-size:15px; font-weight:800; color:#38bdf8; display:flex; align-items:center; gap:8px;">
+          📦 Estado del Almacenamiento Supabase Storage
+        </h4>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+          Límite máximo de seguridad institucional configurado: <strong>700 archivos PDF</strong> en el bucket <code>planeaciones_pdfs</code>.
+        </p>
+
+        <div style="background:rgba(255,255,255,0.06); padding:14px; border-radius:10px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700;">
+            <span>Capacidad Ocupada:</span>
+            <span style="color:${s.porcentaje_usado > 85 ? '#ef4444' : '#10b981'}; font-weight:800;">
+              ${s.archivos_en_storage || 0} de ${s.limite_maximo || 700} PDFs (${s.porcentaje_usado || 0}%)
+            </span>
+          </div>
+          <div style="background:rgba(255,255,255,0.1); height:12px; border-radius:6px; margin-top:8px; overflow:hidden;">
+            <div style="background:${s.porcentaje_usado > 85 ? '#ef4444' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; width:${Math.min(s.porcentaje_usado || 0, 100)}%; height:100%;"></div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" onclick="ejecutarPurgaStorageDesdeDiagnostico()" class="btn btn-danger btn-sm" style="padding:6px 14px; font-size:12px; font-weight:700; background:#dc2626; border:none; border-radius:8px;">
+            🧹 Purgar PDFs de Storage para Liberar Espacio
+          </button>
+        </div>
+      </div>
+
+      <!-- Card Semanas Institucionales -->
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:18px;">
+        <h4 style="margin:0 0 10px; font-size:15px; font-weight:800; color:#10b981; display:flex; align-items:center; gap:8px;">
+          📅 Semanas Institucionales Registradas en BD
+        </h4>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+          En estas semanas los docentes <strong>no tienen exigencia de entrega</strong> y el Cron Job nunca los marcará con falta:
+        </p>
+
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          ${instW.length === 0 ? `
+            <span style="color:var(--text-muted); font-size:12px;">No hay semanas institucionales registradas.</span>
+          ` : instW.map(item => `
+            <div style="background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:6px 10px; font-size:12px;">
+              <strong style="color:#10b981;">Semana ${item.numero_semana}</strong>
+              <small style="color:var(--text-muted); display:block; font-size:10.5px;">${item.motivo || 'Receso'}</small>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
+function setDiagnosticoFilter(filter) {
+  currentDiagnosticoFilter = filter;
+  renderCurrentDiagnosticoView();
+}
+
+async function repararDocenteSemanaAction(docenteId, semana, accion, nombreDocente) {
+  let promptMsg = '';
+  if (accion === 'justificar') {
+    promptMsg = `¿Desea justificar y dar por entregada la Semana ${semana} para ${nombreDocente}?`;
+  } else if (accion === 'limpiar_no_entrego') {
+    promptMsg = `¿Desea eliminar la marca de 'No Entregó' para ${nombreDocente} en la Semana ${semana}?`;
+  }
+  if (!confirm(promptMsg)) return;
+
+  try {
+    const res = await API.Planeaciones.repararSemana({
+      docente_id: docenteId,
+      semana: semana,
+      accion: accion,
+      motivo: 'Acción administrativa realizada desde el Centro de Diagnóstico.'
+    });
+
+    showToast(res.message || 'Operación completada exitosamente', 'success');
+    await loadDiagnosticoData(semana);
+    await loadAdminDocentes();
+  } catch (err) {
+    showToast('Error al reparar semana: ' + (err.message || 'Fallo desconocido'), 'error');
+  }
+}
+
+async function ejecutarPurgaStorageDesdeDiagnostico() {
+  if (!confirm('¿Está seguro de purgar los archivos físicos de Supabase Storage? Los registros en la base de datos se mantendrán intactos.')) return;
+  try {
+    showToast('Iniciando purga de almacenamiento...', 'info');
+    await API.StorageManage.purgar(0);
+    showToast('✅ Almacenamiento purgado exitosamente.', 'success');
+    if (diagnosticoGlobalData) {
+      await loadDiagnosticoData(diagnosticoGlobalData.semana_consultada);
+    }
+  } catch (err) {
+    showToast('Error al purgar almacenamiento: ' + err.message, 'error');
+  }
+}
+
+function copyDiagnosticoSummary() {
+  if (!diagnosticoGlobalData) return;
+  const t = diagnosticoGlobalData.totales || {};
+  const s = diagnosticoGlobalData.storage || {};
+  const docs = diagnosticoGlobalData.docentes || [];
+
+  const issuesList = docs
+    .filter(d => d.severidad !== 'ok' || d.estado_semana === 'sin_entrega' || d.estado_semana === 'no_entrego_cron')
+    .map(d => `• ${d.nombre} (${d.sede_nombre}): ${d.causa_exacta}`)
+    .join('\n');
+
+  const report = `📋 INFORME DE DIAGNÓSTICO INSTITUCIONAL - SEMANA ${diagnosticoGlobalData.semana_consultada}
+Fecha de Auditoría: ${new Date().toLocaleString('es-CO')}
+─────────────────────────────────────────────
+📊 RESUMEN GENERAL:
+• Total Docentes Activos: ${t.docentes_activos || 0}
+• Docentes Al Día: ${t.al_dia || 0} (${Math.round(((t.al_dia || 0)/(t.docentes_activos || 1))*100)}%)
+• Docentes con Faltas / Errores: ${t.sin_entrega || 0}
+• Almacenamiento Supabase: ${s.archivos_en_storage || 0} / 700 PDFs (${s.porcentaje_usado || 0}%)
+
+⚠️ DETALLE DE DOCENTES CON PROBLEMAS O PENDIENTES:
+${issuesList || 'Ninguno. Todos los docentes están al día.'}
+─────────────────────────────────────────────
+Generado por SIGEP-IEG • Centro de Diagnóstico Institucional`;
+
+  navigator.clipboard.writeText(report).then(() => {
+    showToast('📋 Informe de diagnóstico copiado al portapapeles', 'success');
+  }).catch(() => {
+    showToast('No se pudo copiar automáticamente al portapapeles', 'warning');
+  });
 }

@@ -17,6 +17,13 @@ router.get('/', auth, c.getAll);
 router.get('/storage-status', auth, c.getStorageStatus);
 router.post('/purgar-storage', auth, c.purgarStorage);
 
+// Generación de Signed Upload URL para subida directa sin límite de Vercel (hasta 50MB)
+router.post('/upload-url', auth, c.getUploadUrl);
+
+// Centro de Diagnóstico de Errores y Reparación para Administrador
+router.get('/diagnostico-docentes', auth, c.getDiagnosticoDocentes);
+router.post('/reparar-semana', auth, c.repararDocenteSemana);
+
 // Endpoint de configuración para que Rector IA consulte áreas, grados, semanas y fechas oficiales
 router.get('/config-entrega', c.getConfigEntrega);
 

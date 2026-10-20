@@ -140,6 +140,11 @@ var API = window.API || {
     remove: (id, passwordConfirmacion) => apiFetch(`/planeaciones/${id}`, {
       method: 'DELETE',
       body: passwordConfirmacion ? JSON.stringify({ password_confirmacion: passwordConfirmacion }) : undefined
+    }),
+    getDiagnostico: (semana) => apiFetch(`/planeaciones/diagnostico-docentes${semana ? `?semana=${semana}` : ''}`),
+    repararSemana: (data) => apiFetch('/planeaciones/reparar-semana', {
+      method: 'POST',
+      body: JSON.stringify(data)
     })
   },
   Semanas: {
