@@ -84,6 +84,7 @@ exports.getReporte = async (req, res) => {
 
     // Map de entregas existentes por docente canónico y semana
     const cleanRealPlanes = (realPlanes || []).filter(p => p.estado !== 'no_entrego');
+    const realPlansMap = new Set();
     
     cleanRealPlanes.forEach(p => {
       if (p.docente_id && p.numero_semana) {
@@ -275,8 +276,8 @@ exports.getReporte = async (req, res) => {
         ...p,
         docente_nombre: p.docente_nombre || d.nombre || 'Docente Institucional',
         docente_doc: p.docente_doc || d.documento || '--',
-        sede_nombre: p.sede_nombre || (sId && SEDES_MAP[sId]) ? SEDES_MAP[sId] : (d.sede_nombre || 'I.E. Guaimaral'),
-        jornada_nombre: p.jornada_nombre || (jId && JORNADAS_MAP[jId]) ? JORNADAS_MAP[jId] : (d.jornada_nombre || 'Mañana')
+        sede_nombre: p.sede_nombre || ((sId && SEDES_MAP[sId]) ? SEDES_MAP[sId] : (d.sede_nombre || 'I.E. Guaimaral')),
+        jornada_nombre: p.jornada_nombre || ((jId && JORNADAS_MAP[jId]) ? JORNADAS_MAP[jId] : (d.jornada_nombre || 'Mañana'))
       };
     });
 
@@ -304,7 +305,7 @@ exports.getReporte = async (req, res) => {
     });
   } catch (err) {
     console.error('Error al generar reporte:', err);
-    res.status(500).json({ error: 'Error al generar reporte' });
+    res.status(500).json({ error: 'Error al generar reporte: ' + err.message });
   }
 };
 
