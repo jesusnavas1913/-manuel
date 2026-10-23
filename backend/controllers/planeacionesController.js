@@ -642,7 +642,7 @@ exports.update = async (req, res) => {
       const targetD = fecha_aplicacion ? parseDateSafe(fecha_aplicacion) : new Date();
       const targetW = numero_semana ? parseInt(numero_semana) : semanaISO(targetD);
       const now = new Date();
-      const currentW = getActiveAcademicWeek(now);
+      const currentW = semanaISO(now);
       // Permitir preparación anticipada hasta 2 semanas en el futuro
       const maxW = currentW + 2;
 
@@ -1392,7 +1392,7 @@ exports.getConfigEntrega = async (req, res) => {
   try {
     const { docente_email } = req.query;
     const now = new Date();
-    const currentW = getActiveAcademicWeek(now);
+    const currentW = semanaISO(now);
     
     // Semanas institucionales de la BD
     const { data: instWeeks } = await supabase
@@ -1429,6 +1429,7 @@ exports.getConfigEntrega = async (req, res) => {
       
       let label = `Semana ${w}`;
       if (esInst) label += ' (Institucional / Receso)';
+      else if (w > currentW) label += ' (Semana Siguiente - Planificación Anticipada)';
       else if (isCur) label += ' (Semana Activa - En Curso)';
       else label += ' (Anterior)';
 
@@ -1438,7 +1439,7 @@ exports.getConfigEntrega = async (req, res) => {
         numero: w,
         label,
         es_actual: isCur,
-        es_proxima: false,
+        es_proxima: w > currentW,
         es_institucional: esInst,
         fecha_lunes: mondayStr
       });
